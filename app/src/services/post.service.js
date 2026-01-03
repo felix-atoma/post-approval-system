@@ -92,7 +92,7 @@ const postService = {
     }
   },
 
-  // Admin: Review post (approve/reject)
+  // Admin: Review post (approve/reject) - FIXED ENDPOINT
   reviewPost: async (id, reviewData) => {
     try {
       // Send both status and rejectionReason in the request body
@@ -104,7 +104,8 @@ const postService = {
         data.rejectionReason = reviewData.rejectionReason;
       }
       
-      const response = await api.patch(`/posts/admin/${id}/review`, data);
+      // ✅ CORRECTED ENDPOINT: Remove "/admin/" from the path
+      const response = await api.patch(`/posts/${id}/review`, data);
       return response.data;
     } catch (error) {
       console.error('Error in postService.reviewPost:', error);

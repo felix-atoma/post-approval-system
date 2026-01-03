@@ -276,43 +276,35 @@ const authenticate = async (req, res, next) => {
 };
 
 /**
- * Role-based authorization
+ * Role-based authorization - FIXED VERSION
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
-    // ✅ ADD DEBUG LOGGING
-    console.log('🔒 AUTHORIZE DEBUG:', {
-      path: req.path,
-      userRole: req.user?.role,
-      requiredRoles: roles,
-      hasPermission: req.user && roles.includes(req.user.role),
-      userEmail: req.user?.email
-    });
+    try {
+      // ✅ FIXED: Normalize roles safely
+      const allowedRoles = roles
+        .filter(r => r && typeof r === 'string') // Filter out null/undefined/non-strings
+        .map(r => r.trim().toUpperCase());
 
-    if (!req.user) {
-      console.log('❌ No user in request (authentication failed)');
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        error: {
-          message: 'Authentication required',
-          code: ERROR_CODES.ACCESS_TOKEN_REQUIRED
-        }
-      });
+      const userRole =
+        req.user?.role && typeof req.user.role === 'string'
+          ? req.user.role.trim().toUpperCase()
+          : null;
+
+      if (!userRole || !allowedRoles.includes(userRole)) {
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          success: false,
+          error: {
+            message: 'Insufficient permissions',
+            code: ERROR_CODES.INSUFFICIENT_PERMISSIONS
+          }
+        });
+      }
+
+      next();
+    } catch (err) {
+      next(err);
     }
-
-    if (!roles.includes(req.user.role)) {
-      console.log(`❌ Permission denied: user has "${req.user.role}", needs one of: [${roles.join(', ')}]`);
-      return res.status(HTTP_STATUS.FORBIDDEN).json({
-        success: false,
-        error: {
-          message: 'Insufficient permissions',
-          code: ERROR_CODES.INSUFFICIENT_PERMISSIONS
-        }
-      });
-    }
-
-    console.log('✅ Authorization passed');
-    next();
   };
 };
 

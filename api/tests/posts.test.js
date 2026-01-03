@@ -3,6 +3,12 @@ const bcrypt = require('bcryptjs');
 const app = require('../src/app');
 const { prisma } = require('../src/config/database');
 
+// ✅ ADDED: Define test users array
+const testUsers = [
+  { email: 'posts-admin@test.com', password: 'PostsAdmin123!', role: 'ADMIN', name: 'Posts Admin' },
+  { email: 'posts-user@test.com', password: 'PostsUser123!', role: 'USER', name: 'Posts User' },
+];
+
 describe('Posts API', () => {
   let userToken;
   let adminToken;
@@ -16,73 +22,47 @@ describe('Posts API', () => {
   const USER_PASSWORD = 'PostsUser123!';
 
   beforeAll(async () => {
-    try {
-      console.log('🔧 Setting up posts test...');
-      
-      // Clear ALL data to start fresh
-      await prisma.$transaction([
-        prisma.refreshToken.deleteMany(),
-        prisma.post.deleteMany(),
-        prisma.user.deleteMany()
-      ]);
-      
-      // Create admin user
-      const adminPassword = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      const adminUser = await prisma.user.create({
-        data: {
-          email: ADMIN_EMAIL,
-          name: 'Posts Admin',
-          password: adminPassword,
-          role: 'ADMIN'
-        }
+    // Create or update permanent test users
+    for (const u of testUsers) {
+      const hashedPassword = u.password ? await bcrypt.hash(u.password, 10) : null;
+
+      // ✅ FIXED: Update role, name, and password if user exists
+      await prisma.user.upsert({
+        where: { email: u.email },
+        update: {
+          role: u.role,  // ✅ Update role
+          name: u.name,
+          password: hashedPassword,
+          passwordReset: false,
+        },
+        create: {
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          password: hashedPassword,
+          passwordReset: false,
+        },
       });
-      adminId = adminUser.id;
-
-      // Create regular user
-      const userPassword = await bcrypt.hash(USER_PASSWORD, 10);
-      const regularUser = await prisma.user.create({
-        data: {
-          email: USER_EMAIL,
-          name: 'Posts User',
-          password: userPassword,
-          role: 'USER'
-        }
-      });
-      userId = regularUser.id;
-
-      // Login to get tokens
-      // User login
-      const userLoginRes = await request(app)
-        .post('/api/auth/login')
-        .send({
-          email: USER_EMAIL,
-          password: USER_PASSWORD
-        });
-      
-      if (userLoginRes.statusCode !== 200) {
-        throw new Error(`User login failed: ${JSON.stringify(userLoginRes.body)}`);
-      }
-      userToken = userLoginRes.body.accessToken;
-
-      // Admin login
-      const adminLoginRes = await request(app)
-        .post('/api/auth/login')
-        .send({
-          email: ADMIN_EMAIL,
-          password: ADMIN_PASSWORD
-        });
-      
-      if (adminLoginRes.statusCode !== 200) {
-        throw new Error(`Admin login failed: ${JSON.stringify(adminLoginRes.body)}`);
-      }
-      adminToken = adminLoginRes.body.accessToken;
-
-      console.log('✅ Posts test setup complete');
-      
-    } catch (error) {
-      console.error('❌ Test setup failed:', error.message);
-      throw error;
     }
+
+    // Clean test data
+    await prisma.refreshToken.deleteMany();
+    await prisma.post.deleteMany();
+
+    console.log('✅ Test environment prepared');
+
+    // ✅ Login users to get tokens
+    const userRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: USER_EMAIL, password: USER_PASSWORD });
+    userToken = userRes.body.accessToken;
+    userId = userRes.body.user.id;
+
+    const adminRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
+    adminToken = adminRes.body.accessToken;
+    adminId = adminRes.body.user.id;
   });
 
   afterAll(async () => {
@@ -587,125 +567,125 @@ describe('Posts API', () => {
     });
   });
 
- describe('Admin Review Workflow', () => {
-  it('should complete full admin review workflow', async () => {
-    // Create post
-    const createRes = await request(app)
-      .post('/api/posts')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        title: 'Review Post',
-        content: 'Content for review with sufficient length for validation'
-      });
+  describe('Admin Review Workflow', () => {
+    it('should complete full admin review workflow', async () => {
+      // Create post
+      const createRes = await request(app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          title: 'Review Post',
+          content: 'Content for review with sufficient length for validation'
+        });
 
-    expect(createRes.statusCode).toBe(201);
-    const postId = createRes.body.post.id;
+      expect(createRes.statusCode).toBe(201);
+      const postId = createRes.body.post.id;
 
-    // Admin view posts
-    const adminViewRes = await request(app)
-      .get('/api/posts/admin/all?status=PENDING')
-      .set('Authorization', `Bearer ${adminToken}`);
+      // Admin view posts
+      const adminViewRes = await request(app)
+        .get('/api/posts/admin/all?status=PENDING')
+        .set('Authorization', `Bearer ${adminToken}`);
 
-    expect(adminViewRes.statusCode).toBe(200);
+      expect(adminViewRes.statusCode).toBe(200);
 
-    // Admin approve - CORRECTED PATH
-    const approveRes = await request(app)
-      .patch(`/api/posts/${postId}/review`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        status: 'APPROVED'
-      });
+      // Admin approve - Using correct path
+      const approveRes = await request(app)
+        .patch(`/api/posts/${postId}/review`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'APPROVED'
+        });
 
-    expect(approveRes.statusCode).toBe(200);
-    expect(approveRes.body.post.status).toBe('APPROVED');
+      expect(approveRes.statusCode).toBe(200);
+      expect(approveRes.body.post.status).toBe('APPROVED');
 
-    // User view approved post
-    const userViewRes = await request(app)
-      .get(`/api/posts/${postId}`)
-      .set('Authorization', `Bearer ${userToken}`);
+      // User view approved post
+      const userViewRes = await request(app)
+        .get(`/api/posts/${postId}`)
+        .set('Authorization', `Bearer ${userToken}`);
 
-    expect(userViewRes.statusCode).toBe(200);
-    expect(userViewRes.body.post.status).toBe('APPROVED');
+      expect(userViewRes.statusCode).toBe(200);
+      expect(userViewRes.body.post.status).toBe('APPROVED');
 
-    // Test rejection
-    const post2Res = await request(app)
-      .post('/api/posts')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        title: 'Post to Reject',
-        content: 'Content to reject with sufficient length for validation'
-      });
+      // Test rejection
+      const post2Res = await request(app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          title: 'Post to Reject',
+          content: 'Content to reject with sufficient length for validation'
+        });
 
-    const post2Id = post2Res.body.post.id;
-    
-    const rejectRes = await request(app)
-      .patch(`/api/posts/${post2Id}/review`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        status: 'REJECTED',
-        rejectionReason: 'Test rejection reason with sufficient length for validation'
-      });
+      const post2Id = post2Res.body.post.id;
+      
+      const rejectRes = await request(app)
+        .patch(`/api/posts/${post2Id}/review`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'REJECTED',
+          rejectionReason: 'Test rejection reason with sufficient length for validation'
+        });
 
-    expect(rejectRes.statusCode).toBe(200);
-    expect(rejectRes.body.post.status).toBe('REJECTED');
-    expect(rejectRes.body.post.rejectionReason).toBeTruthy();
+      expect(rejectRes.statusCode).toBe(200);
+      expect(rejectRes.body.post.status).toBe('REJECTED');
+      expect(rejectRes.body.post.rejectionReason).toBeTruthy();
+    });
+
+    it('should require rejection reason when rejecting post', async () => {
+      const createRes = await request(app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          title: 'Rejection Test',
+          content: 'Content with sufficient length for validation'
+        });
+
+      expect(createRes.statusCode).toBe(201);
+      const postId = createRes.body.post.id;
+
+      const rejectRes = await request(app)
+        .patch(`/api/posts/${postId}/review`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'REJECTED'
+        });
+
+      // Should fail validation because rejection reason is missing
+      expect(rejectRes.statusCode).toBe(400);
+      expect(rejectRes.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should not allow reviewing already reviewed posts', async () => {
+      const createRes = await request(app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          title: 'Already Reviewed',
+          content: 'Content with sufficient length for validation'
+        });
+
+      expect(createRes.statusCode).toBe(201);
+      const postId = createRes.body.post.id;
+
+      // First review
+      await request(app)
+        .patch(`/api/posts/${postId}/review`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'APPROVED'
+        });
+
+      // Second review attempt
+      const secondRes = await request(app)
+        .patch(`/api/posts/${postId}/review`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          status: 'REJECTED',
+          rejectionReason: 'Try again with sufficient length for validation'
+        });
+
+      expect(secondRes.statusCode).toBe(400);
+      expect(secondRes.body.error.code).toBe('POST_ALREADY_REVIEWED');
+    });
   });
-
-  it('should require rejection reason when rejecting post', async () => {
-    const createRes = await request(app)
-      .post('/api/posts')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        title: 'Rejection Test',
-        content: 'Content with sufficient length for validation'
-      });
-
-    expect(createRes.statusCode).toBe(201);
-    const postId = createRes.body.post.id;
-
-    const rejectRes = await request(app)
-      .patch(`/api/posts/${postId}/review`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        status: 'REJECTED'
-      });
-
-    // Should fail validation because rejection reason is missing
-    expect(rejectRes.statusCode).toBe(400);
-    expect(rejectRes.body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('should not allow reviewing already reviewed posts', async () => {
-    const createRes = await request(app)
-      .post('/api/posts')
-      .set('Authorization', `Bearer ${userToken}`)
-      .send({
-        title: 'Already Reviewed',
-        content: 'Content with sufficient length for validation'
-      });
-
-    expect(createRes.statusCode).toBe(201);
-    const postId = createRes.body.post.id;
-
-    // First review
-    await request(app)
-      .patch(`/api/posts/${postId}/review`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        status: 'APPROVED'
-      });
-
-    // Second review attempt
-    const secondRes = await request(app)
-      .patch(`/api/posts/${postId}/review`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        status: 'REJECTED',
-        rejectionReason: 'Try again with sufficient length for validation'
-      });
-
-    expect(secondRes.statusCode).toBe(400);
-    expect(secondRes.body.error.code).toBe('POST_ALREADY_REVIEWED');
-  });
-});
 });

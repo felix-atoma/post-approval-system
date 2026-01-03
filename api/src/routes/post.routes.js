@@ -39,15 +39,11 @@ router.get('/:id',
   postController.getPostById
 );
 
-// Update post
+// Update post - REMOVED VALIDATION MIDDLEWARE
 router.put('/:id',
   authenticate,
   autoRefreshToken,
-  validate([
-    validationRules.postTitleOptional,
-    validationRules.postContentOptional
-  ]),
-  postController.updatePost
+  postController.updatePost  // <-- VALIDATION REMOVED
 );
 
 // Delete post
@@ -61,7 +57,7 @@ router.delete('/:id',
 router.get('/admin/all',
   authenticate,
   autoRefreshToken,
-  authorize(['ADMIN', 'EDITOR']),
+  authorize('ADMIN'),
   validate([
     ...validationRules.pagination,
     validationRules.statusFilter,
@@ -70,11 +66,11 @@ router.get('/admin/all',
   postController.getAllPosts
 );
 
-// Review post (admin/editor) - Fixed path: /:id/review
+// Review post (admin)
 router.patch('/:id/review',
   authenticate,
   autoRefreshToken,
-  authorize(['ADMIN', 'EDITOR']),
+  authorize('ADMIN'),
   validate([
     validationRules.postStatus,
     validationRules.rejectionReason

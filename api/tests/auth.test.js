@@ -38,31 +38,35 @@ describe('Authentication API', () => {
     }
   ];
 
-  beforeAll(async () => {
-    // Clear ALL data to avoid conflicts
-    await prisma.$transaction([
-      prisma.refreshToken.deleteMany(),
-      prisma.post.deleteMany(),
-      prisma.user.deleteMany()
-    ]);
+ beforeAll(async () => {
+  // Create or update permanent test users
+  for (const u of testUsers) {
+    const hashedPassword = u.password ? await bcrypt.hash(u.password, 10) : null;
 
-    // Create test users
-    for (const user of testUsers) {
-      const hashedPassword = await bcrypt.hash(user.password, 10);
+    // ✅ FIX: Update role, name, and password if user exists
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {
+        role: u.role,  // ✅ Update role
+        name: u.name,  // ✅ Update name
+        password: hashedPassword,  // ✅ Update password
+        passwordReset: u.passwordReset || false,  // ✅ Update reset flag
+      },
+      create: {
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        password: hashedPassword,
+        passwordReset: u.passwordReset || false,
+      },
+    });
+  }
 
-      await prisma.user.create({
-        data: {
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          password: hashedPassword
-        }
-      });
-    }
+  // Clean refresh tokens before tests
+  await prisma.refreshToken.deleteMany();
 
-    console.log('✅ Test users created in DB');
-    console.log('Admin user:', testUsers[0].email, 'Role:', testUsers[0].role);
-  });
+  console.log('✅ Permanent test users ensured in DB with correct roles');
+});
 
   afterAll(async () => {
     await prisma.$disconnect();
