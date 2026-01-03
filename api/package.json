@@ -4,19 +4,29 @@
   "description": "Backend API for post management system",
   "main": "src/server.js",
   "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js",
-  "test": "jest --coverage --coverageThreshold='{}'",
-  "test:watch": "jest --watch",
-  "prisma:generate": "prisma generate",
-  "prisma:migrate": "prisma migrate dev",
-  "prisma:seed": "node prisma/seed.js",
-  "prisma:studio": "prisma studio",
-  "lint": "eslint src/**/*.js",
-  "format": "prettier --write src/**/*.js"
-},
-
-  "keywords": ["express", "node", "prisma", "jwt", "postgresql"],
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node prisma/seed.js",
+    "test": "jest --coverage --coverageThreshold='{}' --runInBand",
+    "test:watch": "jest --watch --runInBand",
+    "test:auth": "jest tests/auth.test.js --runInBand",
+    "test:posts": "jest tests/posts.test.js --runInBand",
+    "test:debug": "jest tests/debug-auth.test.js --runInBand",
+    "test:sequential": "npm run test:auth && npm run test:posts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "node prisma/seed.js",
+    "prisma:studio": "prisma studio",
+    "lint": "eslint src/**/*.js",
+    "format": "prettier --write src/**/*.js"
+  },
+  "keywords": [
+    "express",
+    "node",
+    "prisma",
+    "jwt",
+    "postgresql"
+  ],
   "author": "",
   "license": "MIT",
   "prisma": {
@@ -24,6 +34,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.7.0",
+    "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -32,6 +43,7 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.12",
     "prisma": "^5.7.0"
   },
   "devDependencies": {

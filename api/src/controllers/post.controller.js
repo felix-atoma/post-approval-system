@@ -1,10 +1,7 @@
 const { prisma } = require('../config/database');
-const { HTTP_STATUS, ERROR_CODES, PAGINATION, POST_STATUS } = require('../utils/constants');
+const { HTTP_STATUS, ERROR_CODES, PAGINATION, POST_STATUS, USER_ROLES } = require('../utils/constants');
 
 class PostController {
-  /**
-   * Create a new post
-   */
   async createPost(req, res) {
     try {
       const { title, content } = req.body;
@@ -22,17 +19,26 @@ class PostController {
               name: true,
               email: true
             }
+          },
+          reviewedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
           }
         }
       });
 
       res.status(HTTP_STATUS.CREATED).json({
+        success: true,
         message: 'Post created successfully',
         post
       });
     } catch (error) {
       console.error('Create post error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -41,9 +47,6 @@ class PostController {
     }
   }
 
-  /**
-   * Get user's posts with pagination and filtering
-   */
   async getMyPosts(req, res) {
     try {
       const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE;
@@ -52,7 +55,6 @@ class PostController {
       const search = req.query.search;
       const skip = (page - 1) * limit;
 
-      // Build where clause
       const where = { userId: req.user.id };
       
       if (status) {
@@ -66,7 +68,6 @@ class PostController {
         ];
       }
 
-      // Execute queries in parallel
       const [posts, total] = await Promise.all([
         prisma.post.findMany({
           where,
@@ -75,6 +76,13 @@ class PostController {
           orderBy: { createdAt: 'desc' },
           include: {
             user: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            },
+            reviewedBy: {
               select: {
                 id: true,
                 name: true,
@@ -89,6 +97,7 @@ class PostController {
       const totalPages = Math.ceil(total / limit);
 
       res.json({
+        success: true,
         message: 'Posts retrieved successfully',
         posts,
         pagination: {
@@ -103,6 +112,7 @@ class PostController {
     } catch (error) {
       console.error('Get posts error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -111,11 +121,19 @@ class PostController {
     }
   }
 
-  /**
-   * Get all posts for admin review
-   */
   async getAllPosts(req, res) {
     try {
+      // Check if user is admin or editor
+      if (req.user.role !== USER_ROLES.ADMIN && req.user.role !== USER_ROLES.EDITOR) {
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          success: false,
+          error: {
+            message: 'Insufficient permissions',
+            code: ERROR_CODES.INSUFFICIENT_PERMISSIONS
+          }
+        });
+      }
+
       const page = parseInt(req.query.page) || PAGINATION.DEFAULT_PAGE;
       const limit = parseInt(req.query.limit) || PAGINATION.DEFAULT_LIMIT;
       const status = req.query.status;
@@ -123,7 +141,6 @@ class PostController {
       const search = req.query.search;
       const skip = (page - 1) * limit;
 
-      // Build where clause
       const where = {};
       
       if (status) {
@@ -143,11 +160,16 @@ class PostController {
               { name: { contains: search, mode: 'insensitive' } },
               { email: { contains: search, mode: 'insensitive' } }
             ]
+          }},
+          { reviewedBy: { 
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } }
+            ]
           }}
         ];
       }
 
-      // Execute queries in parallel
       const [posts, total] = await Promise.all([
         prisma.post.findMany({
           where,
@@ -162,6 +184,13 @@ class PostController {
                 email: true,
                 role: true
               }
+            },
+            reviewedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
             }
           }
         }),
@@ -171,6 +200,7 @@ class PostController {
       const totalPages = Math.ceil(total / limit);
 
       res.json({
+        success: true,
         message: 'Posts retrieved successfully',
         posts,
         pagination: {
@@ -185,6 +215,7 @@ class PostController {
     } catch (error) {
       console.error('Get admin posts error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -193,18 +224,23 @@ class PostController {
     }
   }
 
-  /**
-   * Get single post by ID
-   */
   async getPostById(req, res) {
     try {
-      const post = await prisma.post.findFirst({
-        where: {
-          id: req.params.id,
-          userId: req.user.role === 'ADMIN' ? undefined : req.user.id
-        },
+      const postId = req.params.id;
+      const userId = req.user.id;
+      const userRole = req.user.role;
+
+      const post = await prisma.post.findUnique({
+        where: { id: postId },
         include: {
           user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          reviewedBy: {
             select: {
               id: true,
               name: true,
@@ -216,6 +252,7 @@ class PostController {
 
       if (!post) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'Post not found',
             code: ERROR_CODES.POST_NOT_FOUND
@@ -223,13 +260,29 @@ class PostController {
         });
       }
 
+      // Check permissions: Admin/Editor can view any post
+      // User can view their own posts or approved posts from others
+      if (userRole !== USER_ROLES.ADMIN && userRole !== USER_ROLES.EDITOR) {
+        if (post.userId !== userId && post.status !== POST_STATUS.APPROVED) {
+          return res.status(HTTP_STATUS.NOT_FOUND).json({
+            success: false,
+            error: {
+              message: 'Post not found',
+              code: ERROR_CODES.POST_NOT_FOUND
+            }
+          });
+        }
+      }
+
       res.json({
+        success: true,
         message: 'Post retrieved successfully',
         post
       });
     } catch (error) {
       console.error('Get post error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -238,41 +291,81 @@ class PostController {
     }
   }
 
-  /**
-   * Update a post
-   */
   async updatePost(req, res) {
     try {
+      const { id } = req.params;
       const { title, content } = req.body;
-      const postId = req.params.id;
+      const userId = req.user.id;
+      const userRole = req.user.role;
 
-      // Check if post exists and is owned by user
-      const existingPost = await prisma.post.findFirst({
-        where: {
-          id: postId,
-          userId: req.user.id,
-          status: POST_STATUS.PENDING
-        }
+      const post = await prisma.post.findUnique({
+        where: { id }
       });
 
-      if (!existingPost) {
+      if (!post) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
-            message: 'Post not found or cannot be modified',
+            message: 'Post not found',
+            code: ERROR_CODES.POST_NOT_FOUND
+          }
+        });
+      }
+
+      // Check permissions
+      if (userRole !== USER_ROLES.ADMIN && userRole !== USER_ROLES.EDITOR && post.userId !== userId) {
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          success: false,
+          error: {
+            message: 'You can only edit your own posts',
+            code: ERROR_CODES.INSUFFICIENT_PERMISSIONS
+          }
+        });
+      }
+
+      // Check if post can be modified
+      if (post.status !== POST_STATUS.PENDING) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          error: {
+            message: 'Only pending posts can be edited',
             code: ERROR_CODES.POST_NOT_MODIFIABLE
           }
         });
       }
 
+      // Update data
       const updateData = {};
-      if (title) updateData.title = title;
-      if (content) updateData.content = content;
+      if (title !== undefined && title !== '') {
+        updateData.title = title;
+      }
+      if (content !== undefined && content !== '') {
+        updateData.content = content;
+      }
+
+      // If no data to update
+      if (Object.keys(updateData).length === 0) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          error: {
+            message: 'No data provided for update',
+            code: ERROR_CODES.VALIDATION_ERROR
+          }
+        });
+      }
 
       const updatedPost = await prisma.post.update({
-        where: { id: postId },
+        where: { id },
         data: updateData,
         include: {
           user: {
+            select: {
+              id: true,
+              email: true,
+              name: true
+            }
+          },
+          reviewedBy: {
             select: {
               id: true,
               name: true,
@@ -282,15 +375,18 @@ class PostController {
         }
       });
 
-      res.json({
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
         message: 'Post updated successfully',
         post: updatedPost
       });
+
     } catch (error) {
       console.error('Update post error:', error);
       
       if (error.code === 'P2025') {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'Post not found',
             code: ERROR_CODES.POST_NOT_FOUND
@@ -298,7 +394,8 @@ class PostController {
         });
       }
 
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -307,29 +404,47 @@ class PostController {
     }
   }
 
-  /**
-   * Delete a post
-   */
   async deletePost(req, res) {
     try {
       const postId = req.params.id;
+      const userId = req.user.id;
+      const userRole = req.user.role;
 
-      // Check if post exists and is owned by user
-      const existingPost = await prisma.post.findFirst({
-        where: {
-          id: postId,
-          userId: req.user.id,
-          status: POST_STATUS.PENDING
-        }
+      const post = await prisma.post.findUnique({
+        where: { id: postId }
       });
 
-      if (!existingPost) {
+      if (!post) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
-            message: 'Post not found or cannot be deleted',
-            code: ERROR_CODES.POST_NOT_MODIFIABLE
+            message: 'Post not found',
+            code: ERROR_CODES.POST_NOT_FOUND
           }
         });
+      }
+
+      // Check permissions
+      if (userRole !== USER_ROLES.ADMIN && userRole !== USER_ROLES.EDITOR) {
+        if (post.userId !== userId) {
+          return res.status(HTTP_STATUS.FORBIDDEN).json({
+            success: false,
+            error: {
+              message: 'You can only delete your own posts',
+              code: ERROR_CODES.INSUFFICIENT_PERMISSIONS
+            }
+          });
+        }
+        
+        if (post.status !== POST_STATUS.PENDING) {
+          return res.status(HTTP_STATUS.BAD_REQUEST).json({
+            success: false,
+            error: {
+              message: 'Only pending posts can be deleted',
+              code: ERROR_CODES.POST_NOT_MODIFIABLE
+            }
+          });
+        }
       }
 
       await prisma.post.delete({
@@ -337,6 +452,7 @@ class PostController {
       });
 
       res.json({
+        success: true,
         message: 'Post deleted successfully'
       });
     } catch (error) {
@@ -344,6 +460,7 @@ class PostController {
       
       if (error.code === 'P2025') {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'Post not found',
             code: ERROR_CODES.POST_NOT_FOUND
@@ -352,6 +469,7 @@ class PostController {
       }
 
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -360,21 +478,18 @@ class PostController {
     }
   }
 
-  /**
-   * Review/Approve/Reject post (admin only)
-   */
   async reviewPost(req, res) {
     try {
       const { status, rejectionReason } = req.body;
       const postId = req.params.id;
 
-      // Check if post exists
       const post = await prisma.post.findUnique({
         where: { id: postId }
       });
 
       if (!post) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'Post not found',
             code: ERROR_CODES.POST_NOT_FOUND
@@ -382,9 +497,9 @@ class PostController {
         });
       }
 
-      // Check if post is already reviewed
       if (post.status !== POST_STATUS.PENDING) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
           error: {
             message: 'Post has already been reviewed',
             code: ERROR_CODES.POST_ALREADY_REVIEWED,
@@ -393,7 +508,10 @@ class PostController {
         });
       }
 
-      const updateData = { status };
+      const updateData = { 
+        status,
+        reviewedById: req.user.id
+      };
       
       if (status === POST_STATUS.REJECTED) {
         updateData.rejectionReason = rejectionReason || 'No reason provided';
@@ -411,11 +529,19 @@ class PostController {
               name: true,
               email: true
             }
+          },
+          reviewedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
           }
         }
       });
 
       res.json({
+        success: true,
         message: `Post ${status.toLowerCase()} successfully`,
         post: updatedPost
       });
@@ -424,6 +550,7 @@ class PostController {
       
       if (error.code === 'P2025') {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'Post not found',
             code: ERROR_CODES.POST_NOT_FOUND
@@ -432,6 +559,7 @@ class PostController {
       }
 
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR

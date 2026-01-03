@@ -2,14 +2,17 @@ const express = require('express');
 const router = express.Router();
 
 const postController = require('../controllers/post.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
+const { 
+  authenticate, 
+  authorize, 
+  autoRefreshToken 
+} = require('../middleware/auth.middleware');
 const { validate, validationRules } = require('../middleware/validation.middleware');
 
-/**
- * USER ROUTES
- */
+// Create post
 router.post('/',
   authenticate,
+  autoRefreshToken,
   validate([
     validationRules.postTitle,
     validationRules.postContent
@@ -17,8 +20,10 @@ router.post('/',
   postController.createPost
 );
 
+// Get my posts
 router.get('/my-posts',
   authenticate,
+  autoRefreshToken,
   validate([
     ...validationRules.pagination,
     validationRules.statusFilter,
@@ -27,31 +32,36 @@ router.get('/my-posts',
   postController.getMyPosts
 );
 
+// Get post by ID
 router.get('/:id',
   authenticate,
+  autoRefreshToken,
   postController.getPostById
 );
 
+// Update post
 router.put('/:id',
   authenticate,
+  autoRefreshToken,
   validate([
-    validationRules.postTitle.optional(),
-    validationRules.postContent.optional()
+    validationRules.postTitleOptional,
+    validationRules.postContentOptional
   ]),
   postController.updatePost
 );
 
+// Delete post
 router.delete('/:id',
   authenticate,
+  autoRefreshToken,
   postController.deletePost
 );
 
-/**
- * ADMIN ROUTES
- */
+// Get all posts (admin)
 router.get('/admin/all',
   authenticate,
-  authorize('ADMIN'),
+  autoRefreshToken,
+  authorize(['ADMIN', 'EDITOR']),
   validate([
     ...validationRules.pagination,
     validationRules.statusFilter,
@@ -60,9 +70,11 @@ router.get('/admin/all',
   postController.getAllPosts
 );
 
-router.patch('/admin/:id/review',
+// Review post (admin/editor) - Fixed path: /:id/review
+router.patch('/:id/review',
   authenticate,
-  authorize('ADMIN'),
+  autoRefreshToken,
+  authorize(['ADMIN', 'EDITOR']),
   validate([
     validationRules.postStatus,
     validationRules.rejectionReason

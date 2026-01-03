@@ -4,11 +4,15 @@ const { prisma } = require('./config/database');
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, async () => {
+/**
+ * Start HTTP server
+ * Bind to 0.0.0.0 to support IPv4 + IPv6 (fixes ::1 localhost issue on Windows)
+ */
+const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  
+
   try {
     // Test database connection
     await prisma.$connect();
@@ -19,13 +23,15 @@ const server = app.listen(PORT, async () => {
   }
 });
 
-// Graceful shutdown
-const gracefulShutdown = async () => {
-  console.log('🛑 Received shutdown signal');
-  
+/**
+ * Graceful shutdown handler
+ */
+const gracefulShutdown = async (signal) => {
+  console.log(`🛑 Received ${signal}. Shutting down gracefully...`);
+
   server.close(async () => {
     console.log('✅ HTTP server closed');
-    
+
     try {
       await prisma.$disconnect();
       console.log('✅ Database connection closed');
@@ -43,5 +49,18 @@ const gracefulShutdown = async () => {
   }, 10000);
 };
 
+// Handle termination signals
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
+
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ Unhandled Rejection:', reason);
+  gracefulShutdown('unhandledRejection');
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
+});

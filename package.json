@@ -1,0 +1,24 @@
+{
+  "name": "post-approval-system",
+  "version": "1.0.0",
+  "description": "Full-stack post approval system with React frontend and Node.js backend",
+  "scripts": {
+    "install:all": "npm install && cd api && npm install && cd ../app && npm install",
+    "start": "concurrently \"npm run start:api\" \"npm run start:app\"",
+    "start:api": "cd api && npm start",
+    "start:app": "cd app && npm start",
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:app\"",
+    "dev:api": "cd api && npm run dev",
+    "dev:app": "cd app && npm run dev",
+    "build": "cd api && npm run build && cd ../app && npm run build",
+    "test": "concurrently \"npm run test:api\" \"npm run test:app\"",
+    "test:api": "cd api && npm test",
+    "test:app": "cd app && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["react", "nodejs", "postgresql", "prisma", "fullstack"],
+  "author": "Felix Atoma",
+  "license": "MIT"
+}

@@ -1,5 +1,6 @@
 const { prisma } = require('../config/database');
 const { HTTP_STATUS, ERROR_CODES, PAGINATION } = require('../utils/constants');
+const { sendWelcomeEmail } = require('../utils/emailService');
 
 class UserController {
   /**
@@ -8,28 +9,43 @@ class UserController {
   async createUser(req, res) {
     try {
       const { email, name, role = 'USER' } = req.body;
+      
+      console.log(`Admin creating user: ${email}, role: ${role}`);
 
-      // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email }
-      });
-
-      if (existingUser) {
-        return res.status(HTTP_STATUS.CONFLICT).json({
+      // Validate input
+      if (!email || !name) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
           error: {
-            message: 'User already exists',
-            code: ERROR_CODES.USER_EXISTS
+            message: 'Email and name are required',
+            code: ERROR_CODES.VALIDATION_ERROR
           }
         });
       }
 
-      const user = await prisma.user.create({
+      // Check if user already exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email: email.trim().toLowerCase() }
+      });
+
+      if (existingUser) {
+        return res.status(HTTP_STATUS.CONFLICT).json({
+          success: false,
+          error: {
+            message: 'User with this email already exists',
+            code: ERROR_CODES.USER_ALREADY_EXISTS
+          }
+        });
+      }
+
+      // Create user WITHOUT password - user will set it on first login
+      const newUser = await prisma.user.create({
         data: {
-          email,
-          name,
-          role,
-          password: null,
-          passwordReset: true
+          email: email.trim().toLowerCase(),
+          name: name.trim(),
+          role: role.toUpperCase(),
+          passwordReset: true, // Flag that user needs to set password
+          // No password field - user will set it on first login
         },
         select: {
           id: true,
@@ -37,17 +53,50 @@ class UserController {
           name: true,
           role: true,
           passwordReset: true,
-          createdAt: true
+          createdAt: true,
+          updatedAt: true
         }
       });
 
-      res.status(HTTP_STATUS.CREATED).json({
-        message: 'User created successfully. They will be prompted to set a password on first login.',
-        user
+      console.log(`User created successfully: ${newUser.email}`);
+      
+      // 🔥 Send welcome email (simulated)
+      try {
+        await sendWelcomeEmail(newUser.email, newUser.name);
+        console.log('Welcome email sent (simulated)');
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail the user creation if email fails
+      }
+
+      return res.status(HTTP_STATUS.CREATED).json({
+        success: true,
+        message: 'User created successfully. Welcome email sent with login instructions.',
+        user: newUser,
+        emailSent: true,
+        // Include instructions for admin to share
+        instructions: `Share these login instructions with ${newUser.name}:
+        1. Go to: ${process.env.CLIENT_URL || 'http://localhost:3000'}/login
+        2. Email: ${newUser.email}
+        3. Enter any password (will be prompted to set real password)
+        4. Follow the prompts to set password`
       });
+
     } catch (error) {
       console.error('Create user error:', error);
-      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      
+      if (error.code === 'P2002') { // Prisma unique constraint error
+        return res.status(HTTP_STATUS.CONFLICT).json({
+          success: false,
+          error: {
+            message: 'User with this email already exists',
+            code: ERROR_CODES.USER_ALREADY_EXISTS
+          }
+        });
+      }
+
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -109,6 +158,7 @@ class UserController {
       const totalPages = Math.ceil(total / limit);
 
       res.json({
+        success: true,
         message: 'Users retrieved successfully',
         users,
         pagination: {
@@ -123,6 +173,7 @@ class UserController {
     } catch (error) {
       console.error('Get users error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -141,6 +192,7 @@ class UserController {
       // Prevent admin from deleting themselves
       if (userId === req.user.id) {
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
           error: {
             message: 'Cannot delete your own account',
             code: 'SELF_DELETION_NOT_ALLOWED'
@@ -155,6 +207,7 @@ class UserController {
 
       if (!user) {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'User not found',
             code: ERROR_CODES.USER_NOT_FOUND
@@ -168,6 +221,7 @@ class UserController {
       });
 
       res.json({
+        success: true,
         message: 'User deleted successfully'
       });
     } catch (error) {
@@ -175,6 +229,7 @@ class UserController {
       
       if (error.code === 'P2025') {
         return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
           error: {
             message: 'User not found',
             code: ERROR_CODES.USER_NOT_FOUND
@@ -183,6 +238,7 @@ class UserController {
       }
 
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR
@@ -213,12 +269,100 @@ class UserController {
       };
 
       res.json({
+        success: true,
         message: 'Statistics retrieved successfully',
         stats
       });
     } catch (error) {
       console.error('Get stats error:', error);
       res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: {
+          message: 'Internal server error',
+          code: ERROR_CODES.INTERNAL_ERROR
+        }
+      });
+    }
+  }
+
+  /**
+   * Update user role (admin only)
+   */
+  async updateUserRole(req, res) {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
+      
+      console.log(`Updating user ${id} role to: ${role}`);
+
+      // Validate role
+      const validRoles = ['USER', 'ADMIN', 'EDITOR'];
+      if (!validRoles.includes(role?.toUpperCase())) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          error: {
+            message: 'Invalid role. Must be USER, ADMIN, or EDITOR',
+            code: ERROR_CODES.VALIDATION_ERROR
+          }
+        });
+      }
+
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id }
+      });
+
+      if (!user) {
+        return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          error: {
+            message: 'User not found',
+            code: ERROR_CODES.USER_NOT_FOUND
+          }
+        });
+      }
+
+      // Update user role
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: { 
+          role: role.toUpperCase(),
+          updatedAt: new Date()
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          passwordReset: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+
+      console.log(`User role updated: ${updatedUser.email} -> ${updatedUser.role}`);
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'User role updated successfully',
+        user: updatedUser
+      });
+
+    } catch (error) {
+      console.error('Update user role error:', error);
+      
+      if (error.code === 'P2025') { // Record not found
+        return res.status(HTTP_STATUS.NOT_FOUND).json({
+          success: false,
+          error: {
+            message: 'User not found',
+            code: ERROR_CODES.USER_NOT_FOUND
+          }
+        });
+      }
+
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
         error: {
           message: 'Internal server error',
           code: ERROR_CODES.INTERNAL_ERROR

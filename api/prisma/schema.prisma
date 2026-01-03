@@ -7,30 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  USER
-}
-
-enum PostStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
+  id            String         @id @default(cuid())
+  email         String         @unique
   name          String
-  role          Role      @default(USER)
+  role          Role           @default(USER)
   password      String?
-  passwordReset Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  passwordReset Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   posts         Post[]
   refreshTokens RefreshToken[]
-  
+  reviewedPosts Post[]         @relation("ReviewedPosts")
+
   @@index([email])
   @@index([role])
   @@index([createdAt])
@@ -39,15 +28,16 @@ model User {
 model Post {
   id              String     @id @default(cuid())
   title           String     @db.VarChar(200)
-  content         String     @db.Text
+  content         String
   status          PostStatus @default(PENDING)
   rejectionReason String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
-  
   userId          String
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  reviewedById    String?
+  reviewedBy      User?      @relation("ReviewedPosts", fields: [reviewedById], references: [id])
+
   @@index([userId])
   @@index([status])
   @@index([createdAt])
@@ -58,11 +48,24 @@ model RefreshToken {
   id        String   @id @default(cuid())
   token     String   @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
+}
+
+enum Role {
+  ADMIN
+  USER
+  PENDING
+  EDITOR
+}
+
+enum PostStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

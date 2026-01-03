@@ -1,269 +1,293 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider');
   }
-  return context;
+  return ctx;
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [tokenExpiry, setTokenExpiry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
-  const [tokenExpiry, setTokenExpiry] = useState(null);
-  const navigate = useNavigate();
 
-  // Initialize auth state
+  const navigate = useNavigate();
+  const refreshInProgress = useRef(false);
+
+  /* =========================
+     TOKEN REFRESH (SINGLE)
+  ========================== */
+  /* =========================
+   TOKEN REFRESH (SINGLE)
+========================== */
+const refreshToken = useCallback(async () => {
+  // ✅ ADD: Prevent multiple simultaneous refresh attempts
+  if (refreshInProgress.current) {
+    console.log('⏳ Refresh already in progress, skipping...');
+    return true;
+  }
+
+  const storedRefreshToken = localStorage.getItem('refreshToken');
+  if (!storedRefreshToken) {
+    console.log('❌ No refresh token found');
+    return false;
+  }
+
+  try {
+    refreshInProgress.current = true;
+    console.log('🔄 Refreshing token...'); // ✅ ADD: Debug log
+
+    const res = await api.post('/auth/refresh-token', {
+      refreshToken: storedRefreshToken
+    });
+
+    const { accessToken, refreshToken: newRefreshToken } = res.data;
+
+    // ✅ ADD: Check if we got a valid response
+    if (!accessToken) {
+      console.error('❌ No access token in response');
+      return false;
+    }
+
+    localStorage.setItem('token', accessToken);
+    
+    // ✅ CRITICAL: Store the NEW refresh token
+    if (newRefreshToken) {
+      localStorage.setItem('refreshToken', newRefreshToken);
+      console.log('✅ New refresh token stored'); // ✅ ADD: Debug log
+    }
+
+    const decoded = jwtDecode(accessToken);
+    setTokenExpiry(decoded.exp);
+
+    // ✅ CHANGE: Don't update user state - prevents unnecessary re-renders
+    // const storedUser = localStorage.getItem('user');
+    // if (storedUser) {
+    //   setUser(JSON.parse(storedUser));
+    // }
+
+    console.log('✅ Token refresh successful'); // ✅ ADD: Debug log
+
+    return true;
+  } catch (err) {
+    console.error('❌ Refresh token failed:', err);
+    return false;
+  } finally {
+    refreshInProgress.current = false;
+  }
+}, []);
+
+/* =========================
+   AUTO REFRESH BEFORE EXPIRY
+========================== */
+useEffect(() => {
+  if (!tokenExpiry) return;
+
+  const interval = setInterval(async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const timeLeft = tokenExpiry - now;
+    
+    // ✅ ADD: Better logging and check
+    if (timeLeft < 120 && timeLeft > 0) {
+      console.log(`⏰ Token expiring in ${timeLeft}s, refreshing...`);
+      await refreshToken();
+    }
+  }, 30000); // Check every 30 seconds
+
+  return () => clearInterval(interval);
+}, [tokenExpiry, refreshToken]);
+
+  /* =========================
+     INIT AUTH ON APP LOAD
+  ========================== */
   useEffect(() => {
     const initAuth = async () => {
       const token = localStorage.getItem('token');
-      const userData = localStorage.getItem('user');
-      
-      if (token && userData) {
+      const storedUser = localStorage.getItem('user');
+
+      if (token && storedUser) {
         try {
           const decoded = jwtDecode(token);
-          
-          // Check if token is expired
-          if (decoded.exp * 1000 < Date.now()) {
-            // Token expired, try to refresh
-            await handleTokenRefresh();
-          } else {
-            setUser(JSON.parse(userData));
-            setTokenExpiry(decoded.exp);
+          const now = Date.now() / 1000;
+
+          if (decoded.exp < now) {
+            const refreshed = await refreshToken();
+            if (!refreshed) {
+              logout();
+              return;
+            }
           }
-        } catch (error) {
-          console.error('Auth initialization error:', error);
+
+          setUser(JSON.parse(storedUser));
+          setTokenExpiry(decoded.exp);
+        } catch (err) {
+          console.error('Auth init failed:', err);
           logout();
+          return;
         }
       }
-      
+
       setLoading(false);
     };
 
     initAuth();
-  }, []);
+  }, [refreshToken]);
 
-  // Token refresh function
-  const handleTokenRefresh = async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    
-    if (!refreshToken) {
-      logout();
-      return false;
-    }
-    
-    try {
-      const response = await api.post('/auth/refresh-token', { refreshToken });
-      
-      if (response.data.success) {
-        localStorage.setItem('token', response.data.accessToken);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-        
-        const decoded = jwtDecode(response.data.accessToken);
-        setTokenExpiry(decoded.exp);
-        
-        // Get user data from existing storage or fetch fresh
-        const userData = localStorage.getItem('user');
-        if (userData) {
-          setUser(JSON.parse(userData));
-        }
-        return true;
-      } else {
-        logout();
-        return false;
+  /* =========================
+     AUTO REFRESH BEFORE EXPIRY
+  ========================== */
+  useEffect(() => {
+    if (!tokenExpiry) return;
+
+    const interval = setInterval(async () => {
+      const now = Math.floor(Date.now() / 1000);
+      if (tokenExpiry - now < 120) {
+        await refreshToken();
       }
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      logout();
-      return false;
-    }
-  };
+    }, 30000);
 
-  // Public refreshToken function for components to use
-  const refreshToken = useCallback(async () => {
-    const refreshTokenValue = localStorage.getItem('refreshToken');
-    
-    if (!refreshTokenValue) {
-      return false;
-    }
-    
-    try {
-      const response = await api.post('/auth/refresh-token', { 
-        refreshToken: refreshTokenValue 
-      });
-      
-      if (response.data.success) {
-        localStorage.setItem('token', response.data.accessToken);
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-        
-        const decoded = jwtDecode(response.data.accessToken);
-        setTokenExpiry(decoded.exp);
-        
-        // Update token expiry in localStorage for Header component
-        localStorage.setItem('tokenExpiry', decoded.exp.toString());
-        
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Refresh token error:', error);
-      return false;
-    }
-  }, []);
+    return () => clearInterval(interval);
+  }, [tokenExpiry, refreshToken]);
 
+  /* =========================
+     LOGIN
+  ========================== */
   const login = async (email, password) => {
     try {
       setAuthError(null);
-      
-      const response = await api.post('/auth/login', { 
-        email: email.trim().toLowerCase(), 
-        password 
+
+      const cleanEmail = email.trim().toLowerCase();
+
+      const res = await api.post('/auth/login', {
+        email: cleanEmail,
+        password
       });
-      
-      console.log('Login response:', response.data);
-      
-      // Check for password reset required
-      if (response.data.passwordReset || response.data.code === 'PASSWORD_RESET_REQUIRED') {
-        localStorage.setItem('pendingUserId', response.data.userId);
+
+      // Password reset flow
+      if (res.data.passwordReset || res.data.code === 'PASSWORD_RESET_REQUIRED') {
+        localStorage.setItem('pendingUserId', res.data.userId);
+        localStorage.setItem('pendingUser', JSON.stringify(res.data.user || {}));
         navigate('/create-password');
-        toast.info('Please set your password to continue');
+        toast.info('Please set your password');
         return;
       }
-      
-      // Validate response structure
-      if (!response.data.success) {
-        throw new Error('Invalid response from server');
-      }
-      
-      if (!response.data.accessToken || !response.data.user) {
-        throw new Error('Missing required data in response');
-      }
-      
-      // Store auth data
-      localStorage.setItem('token', response.data.accessToken);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      
-      const decoded = jwtDecode(response.data.accessToken);
-      localStorage.setItem('tokenExpiry', decoded.exp.toString());
-      
-      // Update state
-      setUser(response.data.user);
+
+      const { accessToken, refreshToken, user } = res.data;
+
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      const decoded = jwtDecode(accessToken);
       setTokenExpiry(decoded.exp);
-      toast.success(response.data.message || 'Login successful!');
-      
-      // Redirect based on role
-      if (response.data.user.role === 'ADMIN') {
+      setUser(user);
+
+      toast.success('Login successful');
+
+      if (user.role === 'ADMIN') {
         navigate('/admin');
       } else {
         navigate('/dashboard');
       }
-      
-      return response.data;
-      
-    } catch (error) {
-      console.error('Login error:', error);
-      
-      // Set auth error for display
-      if (error.response?.data?.error?.message) {
-        setAuthError(error.response.data.error.message);
-      } else if (error.message) {
-        setAuthError(error.message);
-      } else {
-        setAuthError('Login failed. Please try again.');
-      }
-      
-      throw error;
+
+      return res.data;
+    } catch (err) {
+      const msg =
+        err.response?.data?.error?.message ||
+        err.message ||
+        'Login failed';
+
+      setAuthError(msg);
+      toast.error(msg);
+      throw err;
     }
   };
 
+  /* =========================
+     CREATE PASSWORD
+  ========================== */
   const createPassword = async (password) => {
     try {
       const userId = localStorage.getItem('pendingUserId');
-      
-      if (!userId) {
-        throw new Error('No pending password reset found');
-      }
-      
-      const response = await api.post('/auth/create-password', { 
-        userId, 
-        password 
+      if (!userId) throw new Error('No pending password setup');
+
+      const res = await api.post('/auth/create-password', {
+        userId,
+        password
       });
-      
-      if (response.data.success) {
-        localStorage.removeItem('pendingUserId');
-        toast.success(response.data.message || 'Password created successfully!');
-        navigate('/login');
+
+      const { accessToken, refreshToken, user } = res.data;
+
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      const decoded = jwtDecode(accessToken);
+      setTokenExpiry(decoded.exp);
+      setUser(user);
+
+      localStorage.removeItem('pendingUserId');
+      localStorage.removeItem('pendingUser');
+
+      toast.success('Password set successfully');
+
+      if (user.role === 'ADMIN') {
+        navigate('/admin');
       } else {
-        throw new Error(response.data.error?.message || 'Failed to create password');
+        navigate('/dashboard');
       }
-      
-    } catch (error) {
-      console.error('Create password error:', error);
-      
-      if (error.response?.data?.error?.message) {
-        toast.error(error.response.data.error.message);
-      } else {
-        toast.error(error.message || 'Failed to create password');
-      }
-      
-      throw error;
+    } catch (err) {
+      toast.error(err.message || 'Failed to set password');
+      throw err;
     }
   };
 
+  /* =========================
+     LOGOUT
+  ========================== */
   const logout = async () => {
     try {
       const refreshToken = localStorage.getItem('refreshToken');
-      
       if (refreshToken) {
         await api.post('/auth/logout', { refreshToken });
       }
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (err) {
+      console.error('Logout error:', err);
     } finally {
-      // Clear all storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-      localStorage.removeItem('pendingUserId');
-      localStorage.removeItem('tokenExpiry');
-      
-      // Update state
+      localStorage.clear();
       setUser(null);
-      setAuthError(null);
       setTokenExpiry(null);
-      
-      // Redirect to login
+      setAuthError(null);
       navigate('/login');
-      toast.success('Logged out successfully');
     }
-  };
-
-  const clearAuthError = () => {
-    setAuthError(null);
   };
 
   const value = {
     user,
     loading,
     authError,
-    tokenExpiry,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'ADMIN',
     login,
     createPassword,
     logout,
-    clearAuthError,
-    refreshToken, // Add this function
-    handleTokenRefresh // Keep this for internal use
+    refreshToken
   };
 
   return (

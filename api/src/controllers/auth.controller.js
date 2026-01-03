@@ -10,73 +10,88 @@ class AuthController {
   /**
    * User login
    */
- async login(req, res) {
-  try {
-    const { email, password } = req.body;
-    
-    console.log(`Login attempt for email: ${email}`);
-
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (!user) {
-      console.log(`User not found: ${email}`);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        error: {
-          message: 'Invalid credentials',
-          code: ERROR_CODES.INVALID_CREDENTIALS
-        }
-      });
-    }
-
-    // Check if user needs to set password
-    if (!user.password || user.passwordReset) {
-      console.log(`Password reset required for user: ${email}`);
-      return res.status(HTTP_STATUS.OK).json({
-        success: true,
-        message: 'Please set your password',
-        code: 'PASSWORD_RESET_REQUIRED',
-        userId: user.id,
-        passwordReset: true,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role
-        }
-      });
-    }
-
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      console.log(`Invalid password for user: ${email}`);
-      return res.status(HTTP_STATUS.UNAUTHORIZED).json({
-        success: false,
-        error: {
-          message: 'Invalid credentials',
-          code: ERROR_CODES.INVALID_CREDENTIALS
-        }
-      });
-    }
-
-    console.log(`Login successful for user: ${email}`);
-    
-    // Generate tokens
-    const tokens = generateTokens(user);
-    console.log(`Generated tokens for user: ${email}`);
-
-    // Delete any existing refresh tokens for this user
-    await prisma.refreshToken.deleteMany({
-      where: { userId: user.id }
-    });
-    console.log(`Cleared old refresh tokens for user: ${email}`);
-
-    // Store new refresh token
+  async login(req, res) {
     try {
+      const { email, password } = req.body;
+      
+      console.log(`Login attempt for email: ${email}`);
+
+      // Find user
+      const user = await prisma.user.findUnique({
+        where: { email: email.trim().toLowerCase() }
+      });
+
+      if (!user) {
+        console.log(`User not found: ${email}`);
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          error: {
+            message: 'Invalid credentials',
+            code: ERROR_CODES.INVALID_CREDENTIALS
+          }
+        });
+      }
+
+      // Check if user needs to set password
+      if (!user.password || user.passwordReset) {
+        console.log(`Password reset required for user: ${email}`);
+        return res.status(HTTP_STATUS.OK).json({
+          success: true,
+          message: 'Please set your password',
+          code: ERROR_CODES.PASSWORD_RESET_REQUIRED,
+          userId: user.id,
+          passwordReset: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role
+          }
+        });
+      }
+
+      // Verify password
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      if (!isValidPassword) {
+        console.log(`Invalid password for user: ${email}`);
+        return res.status(HTTP_STATUS.UNAUTHORIZED).json({
+          success: false,
+          error: {
+            message: 'Invalid credentials',
+            code: ERROR_CODES.INVALID_CREDENTIALS
+          }
+        });
+      }
+
+      console.log(`Login successful for user: ${email}`);
+      
+      // Generate tokens
+      const tokens = generateTokens(user);
+      console.log(`Generated tokens for user: ${email}`);
+
+      // Delete any existing refresh tokens for this user
+      await prisma.refreshToken.deleteMany({
+        where: { userId: user.id }
+      });
+      console.log(`Cleared old refresh tokens for user: ${email}`);
+
+      // ✅ CRITICAL FIX: Verify user exists before creating refresh token
+      const userExists = await prisma.user.findUnique({
+        where: { id: user.id }
+      });
+
+      if (!userExists) {
+        console.error(`CRITICAL: User ${user.id} not found in database!`);
+        return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          error: {
+            message: 'User not found in database',
+            code: 'USER_NOT_FOUND'
+          }
+        });
+      }
+
+      // Store new refresh token
       const refreshTokenRecord = await prisma.refreshToken.create({
         data: {
           token: tokens.refreshToken,
@@ -85,34 +100,30 @@ class AuthController {
         }
       });
       console.log(`Refresh token saved to database with ID: ${refreshTokenRecord.id}`);
-    } catch (dbError) {
-      console.error('Failed to save refresh token:', dbError);
-      throw new Error('Failed to save authentication data');
+
+      // Remove password from response
+      const { password: _, ...userWithoutPassword } = user;
+
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Login successful',
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresIn: tokens.expiresIn,
+        user: userWithoutPassword
+      });
+
+    } catch (error) {
+      console.error('Login error:', error);
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: {
+          message: 'Internal server error',
+          code: ERROR_CODES.INTERNAL_ERROR
+        }
+      });
     }
-
-    // Remove password from response
-    const { password: _, ...userWithoutPassword } = user;
-
-    return res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Login successful',
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresIn: tokens.expiresIn,
-      user: userWithoutPassword
-    });
-
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      success: false,
-      error: {
-        message: 'Internal server error',
-        code: ERROR_CODES.INTERNAL_ERROR
-      }
-    });
   }
-}
 
   /**
    * Set initial password (for users created by ADMIN)
@@ -143,7 +154,7 @@ class AuthController {
           success: false,
           error: {
             message: 'Password already set',
-            code: 'PASSWORD_ALREADY_SET'
+            code: ERROR_CODES.PASSWORD_ALREADY_SET
           }
         });
       }
@@ -165,19 +176,14 @@ class AuthController {
       console.log(`Generated tokens for user: ${user.email}`);
 
       // Store refresh token
-      try {
-        const refreshTokenRecord = await prisma.refreshToken.create({
-          data: {
-            token: tokens.refreshToken,
-            userId: user.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-          }
-        });
-        console.log(`Refresh token saved with ID: ${refreshTokenRecord.id}`);
-      } catch (dbError) {
-        console.error('Failed to save refresh token:', dbError);
-        throw new Error('Failed to save authentication data');
-      }
+      const refreshTokenRecord = await prisma.refreshToken.create({
+        data: {
+          token: tokens.refreshToken,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        }
+      });
+      console.log(`Refresh token saved with ID: ${refreshTokenRecord.id}`);
 
       const { password: _, ...userWithoutPassword } = user;
 
@@ -226,35 +232,26 @@ class AuthController {
       // Verify refresh token
       const { user, refreshToken: tokenData } = await verifyRefreshToken(refreshToken);
       
-      console.log(`Refresh token verified for user: ${user.email}, token ID: ${tokenData.id}`);
+      console.log(`Refresh token verified for user: ${user.email}`);
 
       // Generate new tokens
       const tokens = generateTokens(user);
       console.log('New tokens generated');
 
-      console.log(`Deleting old refresh token: ${tokenData.id}`);
-      
       // Delete old refresh token
       await prisma.refreshToken.delete({
         where: { id: tokenData.id }
       });
 
-      console.log(`Creating new refresh token for user: ${user.email}`);
-      
       // Store new refresh token
-      try {
-        const newTokenRecord = await prisma.refreshToken.create({
-          data: {
-            token: tokens.refreshToken,
-            userId: user.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-          }
-        });
-        console.log(`New refresh token saved with ID: ${newTokenRecord.id}`);
-      } catch (dbError) {
-        console.error('Failed to save new refresh token:', dbError);
-        throw new Error('Failed to save authentication data');
-      }
+      const newTokenRecord = await prisma.refreshToken.create({
+        data: {
+          token: tokens.refreshToken,
+          userId: user.id,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        }
+      });
+      console.log(`New refresh token saved with ID: ${newTokenRecord.id}`);
 
       console.log(`Token refresh successful for user: ${user.email}`);
 
@@ -268,28 +265,40 @@ class AuthController {
 
     } catch (error) {
       console.error('Refresh token error:', error.message);
-      console.error('Error stack:', error.stack);
       
       let status = HTTP_STATUS.FORBIDDEN;
-      let code = 'INVALID_REFRESH_TOKEN';
+      let code = ERROR_CODES.INVALID_REFRESH_TOKEN;
       let message = 'Invalid refresh token';
 
-      if (error.message === 'Refresh token expired') {
+      if (error.code === ERROR_CODES.REFRESH_TOKEN_EXPIRED) {
         status = HTTP_STATUS.FORBIDDEN;
-        code = 'REFRESH_TOKEN_EXPIRED';
+        code = ERROR_CODES.REFRESH_TOKEN_EXPIRED;
         message = 'Refresh token expired';
-      } else if (error.message === 'Refresh token not found') {
+      } else if (error.code === ERROR_CODES.TOKEN_NOT_FOUND) {
         status = HTTP_STATUS.FORBIDDEN;
-        code = 'REFRESH_TOKEN_NOT_FOUND';
-        message = 'Refresh token not found. Please login again.';
-      } else if (error.message === 'Invalid refresh token format') {
-        status = HTTP_STATUS.FORBIDDEN;
-        code = 'INVALID_TOKEN_FORMAT';
+        code = ERROR_CODES.TOKEN_NOT_FOUND;
+        message = 'Refresh token not found';
+      } else if (error.code === ERROR_CODES.INVALID_TOKEN_FORMAT) {
+        status = HTTP_STATUS.BAD_REQUEST;
+        code = ERROR_CODES.INVALID_TOKEN_FORMAT;
         message = 'Invalid token format';
-      } else if (error.name === 'JsonWebTokenError') {
+      } else if (error.code === ERROR_CODES.INVALID_TOKEN_TYPE) {
         status = HTTP_STATUS.FORBIDDEN;
-        code = 'INVALID_REFRESH_TOKEN';
-        message = 'Invalid token';
+        code = ERROR_CODES.INVALID_TOKEN_TYPE;
+        message = 'Invalid token type';
+      } else if (error.code === ERROR_CODES.RATE_LIMIT) {
+        status = HTTP_STATUS.TOO_MANY_REQUESTS;
+        code = ERROR_CODES.RATE_LIMIT;
+        message = error.message || 'Please wait before trying again';
+      } else if (error.code === ERROR_CODES.INVALID_REFRESH_TOKEN) {
+        status = HTTP_STATUS.FORBIDDEN;
+        code = ERROR_CODES.INVALID_REFRESH_TOKEN;
+        message = 'Invalid refresh token';
+      }
+
+      // Add a small delay for rate limit errors to slow down clients
+      if (status === HTTP_STATUS.TOO_MANY_REQUESTS) {
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       return res.status(status).json({
@@ -331,6 +340,16 @@ class AuthController {
       });
     } catch (error) {
       console.error('Logout error:', error);
+      
+      // Handle Prisma errors
+      if (error.code === 'P2025' || error.name === 'NotFoundError') {
+        return res.status(HTTP_STATUS.OK).json({
+          success: true,
+          message: 'Already logged out',
+          code: 'ALREADY_LOGGED_OUT'
+        });
+      }
+
       return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
         error: {
@@ -449,7 +468,7 @@ class AuthController {
           });
         }
         updateData.password = await bcrypt.hash(password, 10);
-        updateData.passwordReset = false; // User has set their password
+        updateData.passwordReset = false;
       }
 
       // If no data to update
@@ -561,13 +580,74 @@ class AuthController {
           userEmail: t.user?.email,
           expiresAt: t.expiresAt,
           createdAt: t.createdAt,
-          revoked: t.revoked,
           tokenPreview: t.token ? `${t.token.substring(0, 20)}...` : 'No token',
           isExpired: t.expiresAt < new Date()
         }))
       });
     } catch (error) {
       console.error('Debug error:', error);
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: {
+          message: 'Internal server error',
+          code: ERROR_CODES.INTERNAL_ERROR
+        }
+      });
+    }
+  }
+
+  /**
+   * DEBUG: Get cooldown status
+   */
+  async debugCooldownStatus(req, res) {
+    try {
+      const { getCooldownStatus } = require('../middleware/auth.middleware');
+      const status = getCooldownStatus();
+      
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Cooldown status retrieved',
+        cooldown: status
+      });
+    } catch (error) {
+      console.error('Debug cooldown error:', error);
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        error: {
+          message: 'Internal server error',
+          code: ERROR_CODES.INTERNAL_ERROR
+        }
+      });
+    }
+  }
+
+  /**
+   * DEBUG: Clear cooldown for a user
+   */
+  async debugClearCooldown(req, res) {
+    try {
+      const { userId } = req.body;
+      const { clearCooldown } = require('../middleware/auth.middleware');
+      
+      if (!userId) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          success: false,
+          error: {
+            message: 'User ID is required',
+            code: ERROR_CODES.VALIDATION_ERROR
+          }
+        });
+      }
+      
+      clearCooldown(userId);
+      
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'Cooldown cleared for user',
+        userId
+      });
+    } catch (error) {
+      console.error('Debug clear cooldown error:', error);
       return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
         success: false,
         error: {

@@ -1,8 +1,8 @@
-import React from 'react';
+// app/src/hooks/usePosts.js
 import { useState, useEffect } from 'react';
-import { postService } from '../services/post.service';
+import postService from '../services/post.service';
 
-export default function usePosts(params = {}) {
+export default function usePosts(filters = {}) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,11 +11,18 @@ export default function usePosts(params = {}) {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const response = await postService.getMyPosts(params);
-      setPosts(response.data.posts);
-      setPagination(response.data.pagination);
       setError(null);
+      
+      const response = await postService.getMyPosts(filters);
+      
+      if (response.success) {
+        setPosts(response.posts || []);
+        setPagination(response.pagination || {});
+      } else {
+        setError(new Error(response.error?.message || 'Failed to fetch posts'));
+      }
     } catch (err) {
+      console.error('Error fetching posts:', err);
       setError(err);
     } finally {
       setLoading(false);
@@ -24,13 +31,11 @@ export default function usePosts(params = {}) {
 
   useEffect(() => {
     fetchPosts();
-  }, [params.page, params.limit, params.status, params.search]);
+  }, [filters.page, filters.limit, filters.status, filters.search]);
 
-  return {
-    posts,
-    loading,
-    error,
-    pagination,
-    refetch: fetchPosts
+  const refetch = () => {
+    fetchPosts();
   };
+
+  return { posts, loading, error, pagination, refetch };
 }
