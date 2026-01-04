@@ -3,11 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")  // ✅ Add this line
 }
-
-model User {
+// Changed from "User" to "user" (lowercase)
+model user {
   id            String         @id @default(cuid())
   email         String         @unique
   name          String
@@ -16,16 +17,19 @@ model User {
   passwordReset Boolean        @default(false)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  posts         Post[]
-  refreshTokens RefreshToken[]
-  reviewedPosts Post[]         @relation("ReviewedPosts")
+  posts         post[]
+  refreshTokens refreshToken[]
+  reviewedPosts post[]         @relation("ReviewedPosts")
 
+  // Changed map to match actual table name
+  @@map("users")
   @@index([email])
   @@index([role])
   @@index([createdAt])
 }
 
-model Post {
+// Changed from "Post" to "post" (lowercase)
+model post {
   id              String     @id @default(cuid())
   title           String     @db.VarChar(200)
   content         String
@@ -34,24 +38,27 @@ model Post {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   userId          String
-  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            user       @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviewedById    String?
-  reviewedBy      User?      @relation("ReviewedPosts", fields: [reviewedById], references: [id])
+  reviewedBy      user?      @relation("ReviewedPosts", fields: [reviewedById], references: [id])
 
+  @@map("posts")
   @@index([userId])
   @@index([status])
   @@index([createdAt])
   @@index([userId, status])
 }
 
-model RefreshToken {
+// Changed from "RefreshToken" to "refreshToken" (lowercase)
+model refreshToken {
   id        String   @id @default(cuid())
   token     String   @unique
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@map("refresh_tokens")
   @@index([userId])
   @@index([token])
   @@index([expiresAt])

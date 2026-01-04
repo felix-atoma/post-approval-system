@@ -114,14 +114,33 @@ app.use('/api/posts', postRoutes);
 /* =======================
    EXTENDED HEALTH CHECK
 ======================= */
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    service: 'Post Management API',
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
-  });
+/* =======================
+   EXTENDED HEALTH CHECK
+======================= */
+app.get('/health', async (req, res) => {
+  try {
+    // Test database connection
+    const { prisma } = require('./config/database');
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.status(200).json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      service: 'Post Management API',
+      version: '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      database: 'connected'
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      service: 'Post Management API',
+      environment: process.env.NODE_ENV || 'development',
+      database: 'disconnected',
+      error: error.message
+    });
+  }
 });
 
 /* =======================

@@ -73,7 +73,7 @@ const Pagination = ({
             className={`${sizes[size]} rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
             aria-label="Go to first page"
           >
-            <FiChevronsLeft className="w-4 h-4" />
+            <ChevronsLeft className="w-4 h-4" />
           </button>
         )}
         
@@ -86,7 +86,7 @@ const Pagination = ({
             className={`${sizes[size]} rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
             aria-label="Go to previous page"
           >
-            <FiChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
         )}
         
@@ -146,7 +146,7 @@ const Pagination = ({
             className={`${sizes[size]} rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
             aria-label="Go to next page"
           >
-            <FiChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         )}
         
@@ -159,7 +159,7 @@ const Pagination = ({
             className={`${sizes[size]} rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
             aria-label="Go to last page"
           >
-            <FiChevronsRight className="w-4 h-4" />
+            <ChevronsRight className="w-4 h-4" />
           </button>
         )}
       </div>
