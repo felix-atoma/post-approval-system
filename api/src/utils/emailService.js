@@ -1,44 +1,107 @@
 const nodemailer = require('nodemailer');
 
-const createTransporter = () => {
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-    });
-  }
-  return null;
-};
-
-const sendWelcomeEmail = async (userEmail, userName) => {
+async function sendWelcomeEmail(email, name) {
   const loginUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-  const emailFrom = process.env.EMAIL_FROM || 'noreply@example.com';
-
-  const emailContent = {
-    from: emailFrom,
-    to: userEmail,
-    subject: 'Welcome to Post Management System',
-    text: `Hello ${userName},\n\nVisit ${loginUrl}/login to set your password.`,
-    html: `<p>Hello <strong>${userName}</strong>,<br>Visit <a href="${loginUrl}/login">${loginUrl}/login</a> to set your password.</p>`
-  };
-
+  
+  console.log(`📧 Sending welcome email to: ${email}`);
+  
   try {
-    const transporter = createTransporter();
-    if (transporter) {
-      const info = await transporter.sendMail(emailContent);
-      console.log(`✅ Real email sent to: ${userEmail}`, info.messageId);
-      return { success: true, mode: 'real', messageId: info.messageId };
-    } else {
-      console.log('📧 Email simulation:', emailContent.text);
-      return { success: true, mode: 'simulation' };
-    }
+    // ✅ Create transporter for Gmail
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.EMAIL_PORT) || 587,
+      secure: false, // true for 465, false for other ports
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      },
+      // Add these for Gmail
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    // ✅ Email content
+    const mailOptions = {
+      from: `"${process.env.APP_NAME || 'Post Management System'}" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: '🎉 Welcome! Your Account Has Been Created',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .steps { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea; }
+            .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>👋 Welcome, ${name}!</h1>
+              <p>Your account has been successfully created</p>
+            </div>
+            
+            <div class="content">
+              <p>Hello ${name},</p>
+              <p>An administrator has created an account for you. You're just one step away from getting started!</p>
+              
+              <div class="steps">
+                <h3 style="margin-top: 0; color: #667eea;">📝 Setup Instructions:</h3>
+                <ol style="padding-left: 20px;">
+                  <li style="margin-bottom: 10px;">Go to the login page: <a href="${loginUrl}/login" style="color: #667eea;">${loginUrl}/login</a></li>
+                  <li style="margin-bottom: 10px;">Enter your email: <strong>${email}</strong></li>
+                  <li style="margin-bottom: 10px;">Enter <strong>any temporary password</strong> (e.g., "temp123")</li>
+                  <li style="margin-bottom: 10px;">You'll be prompted to create your own secure password</li>
+                </ol>
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="${loginUrl}/login" class="button">Get Started →</a>
+              </div>
+              
+              <div style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; margin-top: 20px;">
+                <strong>💡 Tip:</strong> Choose a strong password with at least 8 characters, including uppercase, lowercase, and numbers.
+              </div>
+            </div>
+            
+            <div class="footer">
+              <p>If you didn't expect this email, please ignore it or contact support.</p>
+              <p style="color: #999; font-size: 11px;">© ${new Date().getFullYear()} ${process.env.APP_NAME || 'Post Management System'}. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    // ✅ Send email
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully!');
+    console.log('   Message ID:', info.messageId);
+    console.log('   To:', email);
+    
+    return info;
+    
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
-    console.log('📧 Showing simulation:', emailContent.text);
-    return { success: false, mode: 'failed', error: error.message, simulatedContent: emailContent.text };
+    console.error('❌ Failed to send email:', error.message);
+    console.error('   Email was supposed to go to:', email);
+    
+    // Don't throw - we don't want user creation to fail if email fails
+    // Just log the error
+    if (error.code === 'EAUTH') {
+      console.error('   → Gmail authentication failed. Check your app password!');
+    } else if (error.code === 'ESOCKET') {
+      console.error('   → Network error. Check your internet connection.');
+    }
+    
+    return null;
   }
-};
+}
 
 module.exports = { sendWelcomeEmail };

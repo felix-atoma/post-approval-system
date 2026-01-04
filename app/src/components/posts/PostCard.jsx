@@ -1,157 +1,197 @@
-// src/components/posts/PostCard.jsx - UPDATED VERSION
 import React from 'react';
+import { format } from 'date-fns';
 import Button from '../common/Button';
-import { CheckCircle, XCircle, Eye, Calendar, User, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Eye, Edit, Trash2, AlertCircle } from 'lucide-react';
 
-const PostCard = ({ 
-  post, 
-  onApprove, 
-  onReject, 
+export default function PostCard({
+  post,
+  onApprove,
+  onReject,
   onView,
-  showApproveButton = true,
-  showRejectButton = true,
-  showViewButton = true,
-  showAuthorInfo = true 
-}) => {
-  const statusColors = {
-    PENDING: 'bg-yellow-100 text-yellow-800',
-    APPROVED: 'bg-green-100 text-green-800',
-    REJECTED: 'bg-red-100 text-red-800'
-  };
+  onEdit,
+  onDelete,
+  showApproveButton = false,
+  showRejectButton = false,
+  showViewButton = false,
+  showEditButton = false,
+  showDeleteButton = false,
+  showAuthorInfo = false,
+  showStatusBadge = true,
+  showRejectionReason = true,
+  showActions = true,
+  className = ''
+}) {
+  const getStatusBadge = () => {
+    const statusConfig = {
+      PENDING: {
+        color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        icon: Clock,
+        text: 'Pending Review'
+      },
+      APPROVED: {
+        color: 'bg-green-100 text-green-800 border-green-200',
+        icon: CheckCircle,
+        text: 'Approved'
+      },
+      REJECTED: {
+        color: 'bg-red-100 text-red-800 border-red-200',
+        icon: XCircle,
+        text: 'Rejected'
+      }
+    };
 
-  const statusIcons = {
-    PENDING: AlertCircle,
-    APPROVED: CheckCircle,
-    REJECTED: XCircle
-  };
+    const config = statusConfig[post.status] || statusConfig.PENDING;
+    const Icon = config.icon;
 
-  const StatusIcon = statusIcons[post.status] || AlertCircle;
-
-  // Handle button clicks
-  const handleApproveClick = (e) => {
-    e.stopPropagation();
-    if (onApprove) onApprove(post);
-  };
-
-  const handleRejectClick = (e) => {
-    e.stopPropagation();
-    if (onReject) onReject(post);
-  };
-
-  const handleViewClick = (e) => {
-    e.stopPropagation();
-    if (onView) onView(post);
+    return (
+      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+        <Icon className="w-3 h-3 mr-1" />
+        {config.text}
+      </span>
+    );
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden ${className}`}>
       {/* Header */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex justify-between items-start">
+      <div className="p-6 pb-4">
+        <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900">{post.title}</h3>
-            
-            {/* Metadata */}
-            <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-600">
-              {showAuthorInfo && post.author && (
-                <span className="flex items-center gap-1">
-                  <User className="h-4 w-4" />
-                  {post.author.name}
-                </span>
-              )}
-              
-              <span className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                {new Date(post.createdAt).toLocaleDateString()}
-              </span>
-              
-              <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusColors[post.status]}`}>
-                <StatusIcon className="h-3 w-3" />
-                {post.status}
-              </span>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
+              {post.title}
+            </h3>
+            {showAuthorInfo && post.user && (
+              <div className="flex items-center text-sm text-gray-600 mb-2">
+                <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center mr-2">
+                  <span className="text-xs font-medium text-blue-600">
+                    {post.user.name?.charAt(0) || post.user.email?.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <span className="font-medium">{post.user.name || post.user.email}</span>
+              </div>
+            )}
+          </div>
+          {showStatusBadge && (
+            <div className="ml-4">
+              {getStatusBadge()}
+            </div>
+          )}
+        </div>
+
+        <p className="text-gray-600 line-clamp-3 mb-4">
+          {post.content}
+        </p>
+
+        {/* Rejection Reason */}
+        {showRejectionReason && post.status === 'REJECTED' && post.rejectionReason && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-900 mb-1">
+                  Rejection Reason:
+                </p>
+                <p className="text-sm text-red-800">
+                  {post.rejectionReason}
+                </p>
+              </div>
             </div>
           </div>
-          
-          {/* Action Buttons */}
-          <div className="flex gap-2 ml-4">
-            {showViewButton && (
-              <Button
-                onClick={handleViewClick}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-1"
-              >
-                <Eye className="h-4 w-4" />
-                View
-              </Button>
-            )}
-            
-            {showApproveButton && post.status === 'PENDING' && (
-              <Button
-                onClick={handleApproveClick}
-                variant="success"
-                size="sm"
-                className="flex items-center gap-1"
-              >
-                <CheckCircle className="h-4 w-4" />
-                Approve
-              </Button>
-            )}
-            
-            {showRejectButton && post.status === 'PENDING' && (
-              <Button
-                onClick={handleRejectClick}
-                variant="danger"
-                size="sm"
-                className="flex items-center gap-1"
-              >
-                <XCircle className="h-4 w-4" />
-                Reject
-              </Button>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        <div className="prose max-w-none">
-          <p className="text-gray-700 line-clamp-3">{post.content}</p>
+      {/* Footer */}
+      <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          {/* Meta Information */}
+          <div className="text-sm text-gray-500 space-y-1">
+            <div className="flex items-center">
+              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Created {format(new Date(post.createdAt), 'MMM dd, yyyy')}
+            </div>
+            {post.reviewedBy && (
+              <div className="flex items-center text-xs">
+                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Reviewed by {post.reviewedBy.name}
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          {showActions && (
+            <div className="flex flex-wrap gap-2">
+              {/* ✅ EDIT BUTTON - For pending posts */}
+              {showEditButton && onEdit && (
+                <Button
+                  onClick={onEdit}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center"
+                >
+                  <Edit className="w-4 h-4 mr-1.5" />
+                  Edit
+                </Button>
+              )}
+
+              {/* View Button */}
+              {showViewButton && onView && (
+                <Button
+                  onClick={onView}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center"
+                >
+                  <Eye className="w-4 h-4 mr-1.5" />
+                  View
+                </Button>
+              )}
+
+              {/* Approve Button */}
+              {showApproveButton && onApprove && (
+                <Button
+                  onClick={onApprove}
+                  variant="success"
+                  size="sm"
+                  className="flex items-center bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
+                  Approve
+                </Button>
+              )}
+
+              {/* Reject Button */}
+              {showRejectButton && onReject && (
+                <Button
+                  onClick={onReject}
+                  variant="danger"
+                  size="sm"
+                  className="flex items-center"
+                >
+                  <XCircle className="w-4 h-4 mr-1.5" />
+                  Reject
+                </Button>
+              )}
+
+              {/* Delete Button */}
+              {showDeleteButton && onDelete && (
+                <Button
+                  onClick={onDelete}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete
+                </Button>
+              )}
+            </div>
+          )}
         </div>
-        
-        {/* Tags if available */}
-        {post.tags && post.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {post.tags.map((tag, index) => (
-              <span 
-                key={index}
-                className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-        
-        {/* Rejection reason if rejected */}
-        {post.status === 'REJECTED' && post.rejectionReason && (
-          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
-            <p className="text-sm font-medium text-red-800">Rejection Reason:</p>
-            <p className="text-sm text-red-600">{post.rejectionReason}</p>
-          </div>
-        )}
-        
-        {/* Review info if reviewed */}
-        {post.reviewedBy && post.updatedAt !== post.createdAt && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-500">
-              Reviewed by {post.reviewedBy.name} on {new Date(post.updatedAt).toLocaleDateString()}
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
-};
-
-export default PostCard;
+}

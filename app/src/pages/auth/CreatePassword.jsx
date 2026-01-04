@@ -1,146 +1,134 @@
-// In app/src/pages/auth/CreatePassword.jsx:
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import  useAuth  from '../../hooks/useAuth';
+// Change this from default import to named import
+import { authService } from '../../services/auth.service'; // <-- Changed this line
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import Loading from '../../components/common/Loading';
 import toast from 'react-hot-toast';
+import useAuth from '../../hooks/useAuth';
 
 export default function CreatePassword() {
-  const { createPassword } = useAuth();
   const navigate = useNavigate();
+  const { login } = useAuth();
+  const [userId, setUserId] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    password: '',
-    confirmPassword: ''
-  });
-  const [errors, setErrors] = useState({});
 
-  const validateForm = () => {
-    const newErrors = {};
+  useEffect(() => {
+    const storedUserId = sessionStorage.getItem('setupUserId');
+    const storedEmail = sessionStorage.getItem('setupEmail');
     
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    if (!storedUserId || !storedEmail) {
+      toast.error('Invalid password setup session');
+      navigate('/login');
+      return;
     }
     
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setUserId(storedUserId);
+    setEmail(storedEmail);
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    // Validate
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      toast.error('Password must contain uppercase, lowercase, and number');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
       return;
     }
     
     setLoading(true);
+    
     try {
-      await createPassword(formData.password);
-      // Navigation happens in createPassword function
+      // Call the backend - it returns tokens!
+      const response = await authService.createPassword(userId, password);
+      
+      // Clear session storage
+      sessionStorage.removeItem('setupUserId');
+      sessionStorage.removeItem('setupEmail');
+      
+      // The backend returns tokens, so we can log the user in directly
+      // Access response data properly based on your API structure
+      if (response.data?.accessToken && response.data?.refreshToken) {
+        // Store tokens
+        localStorage.setItem('accessToken', response.data.accessToken);
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+        
+        toast.success('Password created! Welcome!');
+        
+        // Redirect to dashboard
+        navigate('/dashboard');
+        window.location.reload(); // Reload to update auth state
+      } else if (response.accessToken && response.refreshToken) {
+        // Alternative: if tokens are in the root of response
+        localStorage.setItem('accessToken', response.accessToken);
+        localStorage.setItem('refreshToken', response.refreshToken);
+        
+        toast.success('Password created! Welcome!');
+        navigate('/dashboard');
+        window.location.reload();
+      } else {
+        toast.success('Password created! Please login.');
+        navigate('/login');
+      }
     } catch (error) {
-      console.error('Failed to set password:', error);
-      // Error is already shown by createPassword
+      toast.error(error.response?.data?.error?.message || 'Failed to create password');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  if (loading) {
-    return <Loading />;
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Set Your Password
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
+            Create Your Password
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Welcome! Please create a password for your account.
+            Welcome! Set your password for <span className="font-semibold">{email}</span>
           </p>
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm space-y-4">
-            <Input
-              label="New Password"
-              name="password"
-              type="password"
-              value={formData.password}
-              onChange={handleChange}
-              error={errors.password}
-              placeholder="Enter your new password"
-              required
-              autoComplete="new-password"
-            />
-            
-            <Input
-              label="Confirm Password"
-              name="confirmPassword"
-              type="password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              error={errors.confirmPassword}
-              placeholder="Confirm your new password"
-              required
-              autoComplete="new-password"
-            />
-          </div>
-
-          <div className="text-sm text-gray-600">
-            <p>Password requirements:</p>
-            <ul className="list-disc pl-5 mt-1 space-y-1">
-              <li>At least 6 characters long</li>
-              <li>Can include letters, numbers, and symbols</li>
-            </ul>
-          </div>
-
-          <div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading ? 'Setting Password...' : 'Set Password'}
-            </Button>
-          </div>
+          <Input
+            label="New Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            required
+            helpText="At least 8 characters with uppercase, lowercase, and number"
+          />
           
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => navigate('/login')}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              Back to Login
-            </button>
-          </div>
+          <Input
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm your password"
+            required
+          />
+          
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full"
+          >
+            {loading ? 'Creating Password...' : 'Create Password & Login'}
+          </Button>
         </form>
       </div>
     </div>

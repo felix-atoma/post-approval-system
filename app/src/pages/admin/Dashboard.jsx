@@ -1,22 +1,71 @@
 ﻿// src/pages/admin/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import useAuth from '../../hooks/useAuth';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  CheckCircle, 
+  XCircle, 
+  Eye, 
+  AlertTriangle, 
+  Users, 
+  FileText,
+  Clock,
+  Search,
+  Filter,
+  Plus,
+  Trash2,
+  User,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw
+} from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import postService from '../../services/post.service';
 import userService from '../../services/user.service';
 import PostCard from '../../components/posts/PostCard';
-import PostFilters from '../../components/posts/PostFilters';
-import ApprovalModal from '../../components/posts/ApprovalModal';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import Loading from '../../components/common/Loading';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Alert from '../../components/common/Alert';
-import toast from 'react-hot-toast';
-import { CheckCircle, XCircle, Eye, AlertTriangle, Users, FileText } from 'lucide-react';
+import EmptyState from '../../components/common/EmptyState';
+import ErrorState from '../../components/common/ErrorState';
+import SearchBar from '../../components/common/SearchBar';
+import FilterDropdown from '../../components/common/FilterDropdown';
+import StatusBadge from '../../components/common/StatusBadge';
+import Pagination from '../../components/common/Pagination';
+import { toast } from 'react-hot-toast';
+
+// Animation variants
+const pageVariants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { 
+    opacity: 1, 
+    y: 0,
+    transition: {
+      duration: 0.4,
+      ease: "easeOut"
+    }
+  },
+  exit: { opacity: 0, y: -20 }
+};
+
+const statsVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.1,
+      duration: 0.4,
+      ease: "easeOut"
+    }
+  })
+};
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const fetchingPosts = useRef(false);
   const fetchingUsers = useRef(false);
@@ -41,8 +90,6 @@ export default function AdminDashboard() {
   const [postsLoading, setPostsLoading] = useState(true);
   const [postsError, setPostsError] = useState(null);
   const [postsPagination, setPostsPagination] = useState({});
-  const [postToApprove, setPostToApprove] = useState(null);
-  const [postToReject, setPostToReject] = useState(null);
   
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -55,6 +102,22 @@ export default function AdminDashboard() {
     role: 'USER'
   });
   const [creatingUser, setCreatingUser] = useState(false);
+
+  // Redirect non-admin/non-editor users
+  useEffect(() => {
+    if (user && !['ADMIN', 'EDITOR'].includes(user.role)) {
+      toast.error('Admin or Editor access required');
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
+  // Check for refresh flag
+  useEffect(() => {
+    if (location.state?.refreshPosts) {
+      fetchPosts();
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   const fetchPosts = useCallback(async () => {
     if (fetchingPosts.current) return;
@@ -74,10 +137,17 @@ export default function AdminDashboard() {
       if (response && response.success === true) {
         setPosts(response.posts || []);
         setPostsPagination(response.pagination || {});
+        
+        if (response.posts?.length > 0) {
+          toast.success(`${response.posts.length} posts loaded`, { 
+            icon: '📝',
+            duration: 2000 
+          });
+        }
       } else {
         const errorMsg = response?.error?.message || 'Failed to fetch posts';
         setPostsError(new Error(errorMsg));
-        toast.error(errorMsg);
+        toast.error(errorMsg, { icon: '⚠️' });
       }
     } catch (err) {
       console.error('Error fetching posts:', err);
@@ -88,6 +158,7 @@ export default function AdminDashboard() {
         errorMessage = err.response.data.error.message;
       }
       setPostsError(new Error(errorMessage));
+      toast.error(errorMessage, { icon: '❌' });
     } finally {
       setPostsLoading(false);
       fetchingPosts.current = false;
@@ -112,16 +183,23 @@ export default function AdminDashboard() {
       if (response && response.success === true) {
         setUsers(response.users || []);
         setUsersPagination(response.pagination || {});
+        
+        if (response.users?.length > 0) {
+          toast.success(`${response.users.length} users loaded`, { 
+            icon: '👥',
+            duration: 2000 
+          });
+        }
       } else {
         const errorMsg = response?.error?.message || 'Failed to fetch users';
         setUsersError(new Error(errorMsg));
-        toast.error(errorMsg);
+        toast.error(errorMsg, { icon: '⚠️' });
       }
     } catch (err) {
       console.error('Error fetching users:', err);
       const errorMessage = err.response?.data?.error?.message || 'Failed to load users';
       setUsersError(new Error(errorMessage));
-      toast.error(errorMessage);
+      toast.error(errorMessage, { icon: '❌' });
     } finally {
       setUsersLoading(false);
       fetchingUsers.current = false;
@@ -131,10 +209,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeTab === 'posts') {
       fetchPosts();
-    } else if (activeTab === 'users') {
+    } else if (activeTab === 'users' && user?.role === 'ADMIN') {
       fetchUsers();
     }
-  }, [activeTab, fetchPosts, fetchUsers]);
+  }, [activeTab, fetchPosts, fetchUsers, user?.role]);
 
   const handlePostFilterChange = (key, value) => {
     setPostFilters(prev => ({
@@ -152,14 +230,6 @@ export default function AdminDashboard() {
     }));
   };
 
-  const handlePostPageChange = (newPage) => {
-    handlePostFilterChange("page", newPage);
-  };
-
-  const handleUserPageChange = (newPage) => {
-    handleUserFilterChange("page", newPage);
-  };
-
   const handleApprovePost = async (postId) => {
     try {
       const response = await postService.reviewPost(postId, { 
@@ -167,8 +237,7 @@ export default function AdminDashboard() {
       });
       
       if (response && response.success === true) {
-        toast.success('Post approved successfully!');
-        // Update local state
+        toast.success('Post approved successfully!', { icon: '✅' });
         setPosts(prevPosts => 
           prevPosts.map(post => 
             post.id === postId 
@@ -182,20 +251,19 @@ export default function AdminDashboard() {
               : post
           )
         );
-        setPostToApprove(null);
       } else {
-        toast.error(response?.error?.message || 'Failed to approve post');
+        toast.error(response?.error?.message || 'Failed to approve post', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Approve post error:', error);
       const errorMessage = error.response?.data?.error?.message || 'Failed to approve post';
-      toast.error(errorMessage);
+      toast.error(errorMessage, { icon: '❌' });
     }
   };
 
   const handleRejectPost = async (postId, rejectionReason) => {
     if (!rejectionReason || rejectionReason.trim() === '') {
-      toast.error('Please provide a rejection reason');
+      toast.error('Please provide a rejection reason', { icon: '📝' });
       return;
     }
 
@@ -206,8 +274,7 @@ export default function AdminDashboard() {
       });
       
       if (response && response.success === true) {
-        toast.success('Post rejected successfully');
-        // Update local state
+        toast.success('Post rejected successfully', { icon: '✅' });
         setPosts(prevPosts => 
           prevPosts.map(post => 
             post.id === postId 
@@ -221,34 +288,13 @@ export default function AdminDashboard() {
               : post
           )
         );
-        setPostToReject(null);
       } else {
-        toast.error(response?.error?.message || 'Failed to reject post');
+        toast.error(response?.error?.message || 'Failed to reject post', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Reject post error:', error);
       const errorMessage = error.response?.data?.error?.message || 'Failed to reject post';
-      toast.error(errorMessage);
-    }
-  };
-
-  const openApproveModal = (post) => {
-    setPostToApprove(post);
-  };
-
-  const openRejectModal = (post) => {
-    setPostToReject(post);
-  };
-
-  const onApproveSubmit = async () => {
-    if (postToApprove) {
-      await handleApprovePost(postToApprove.id);
-    }
-  };
-
-  const onRejectSubmit = async (rejectionReason) => {
-    if (postToReject) {
-      await handleRejectPost(postToReject.id, rejectionReason);
+      toast.error(errorMessage, { icon: '❌' });
     }
   };
 
@@ -256,13 +302,13 @@ export default function AdminDashboard() {
     e.preventDefault();
     
     if (!newUser.email || !newUser.name) {
-      toast.error('Email and name are required');
+      toast.error('Email and name are required', { icon: '📝' });
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newUser.email)) {
-      toast.error('Invalid email address');
+      toast.error('Invalid email address', { icon: '📧' });
       return;
     }
 
@@ -276,541 +322,675 @@ export default function AdminDashboard() {
       );
       
       if (response && response.success === true) {
-        toast.success('User created successfully!');
+        const instructions = `
+📧 User Created: ${newUser.name}
+
+Login Instructions (share with user):
+1. Go to: ${window.location.origin}/login
+2. Email: ${newUser.email}
+3. Password: Any temporary password (e.g., "temp123")
+4. They'll be prompted to create their permanent password
+        `.trim();
+        
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(instructions);
+          toast.success('User created! Instructions copied to clipboard.', { icon: '📋' });
+        } else {
+          toast.success('User created successfully!', { icon: '✅' });
+        }
+        
         setShowCreateUser(false);
         setNewUser({ email: '', name: '', role: 'USER' });
         fetchUsers();
       } else {
-        toast.error(response?.error?.message || 'Failed to create user');
+        toast.error(response?.error?.message || 'Failed to create user', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Create user error:', error);
-      toast.error(error.response?.data?.error?.message || 'Failed to create user');
+      toast.error(error.response?.data?.error?.message || 'Failed to create user', { icon: '❌' });
     } finally {
       setCreatingUser(false);
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
-    
+  const handleDeleteUser = async (userId, userName) => {
+    const confirmed = await new Promise(resolve => {
+      toast.custom((t) => (
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full"
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete User</h3>
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to delete user <strong>{userName}</strong>? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    resolve(false);
+                  }}
+                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    resolve(true);
+                  }}
+                  className="flex-1 px-4 py-2 text-white bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors"
+                >
+                  Delete User
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      ));
+    });
+
+    if (!confirmed) return;
+
     try {
       const response = await userService.deleteUser(userId);
       
       if (response && response.success === true) {
-        toast.success('User deleted successfully');
+        toast.success('User deleted successfully', { icon: '✅' });
         fetchUsers();
       } else {
-        toast.error(response?.error?.message || 'Failed to delete user');
+        toast.error(response?.error?.message || 'Failed to delete user', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Delete user error:', error);
-      toast.error('Failed to delete user');
+      toast.error('Failed to delete user', { icon: '❌' });
     }
   };
 
-  const postFiltersProps = {
-    filters: {
-      search: postFilters.search || '',
-      status: postFilters.status || '',
-      limit: postFilters.limit || 10
-    },
-    onFilterChange: handlePostFilterChange,
-    showSearch: true,
-    showStatusFilter: true,
-    showUserFilter: false,
-    defaultStatus: 'PENDING'
-  };
+  const handleRefresh = useCallback(() => {
+    if (activeTab === 'posts') {
+      fetchPosts();
+    } else if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab, fetchPosts, fetchUsers]);
 
   // Check admin/editor access
-  if (!user || (user.role !== 'ADMIN' && user.role !== 'EDITOR')) {
+  if (!user || !['ADMIN', 'EDITOR'].includes(user.role)) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <Alert 
-            type="error" 
-            message="Admin or Editor access required"
-            className="mb-6"
-          />
-          <Button onClick={() => navigate('/dashboard')}>
-            Go to Dashboard
-          </Button>
-        </div>
-      </div>
+      <ErrorState
+        title="Access Denied"
+        message="Admin or Editor privileges required"
+        onHome={() => navigate('/dashboard')}
+      />
     );
   }
 
-  const renderPostsTab = () => {
-    if (postsLoading && !posts.length) {
-      return (
-        <div className="flex justify-center py-12">
-          <Loading />
-        </div>
-      );
-    }
+  const pendingCount = posts.filter(p => p.status === 'PENDING').length;
+  const approvedCount = posts.filter(p => p.status === 'APPROVED').length;
+  const rejectedCount = posts.filter(p => p.status === 'REJECTED').length;
 
-    if (postsError && !posts.length) {
-      return (
-        <div className="text-center py-12">
-          <Alert type="error" message={postsError.message} />
-          <Button onClick={fetchPosts} className="mt-4">
-            Retry
-          </Button>
-        </div>
-      );
-    }
+  const userCount = users.length;
+  const adminCount = users.filter(u => u.role === 'ADMIN').length;
+  const editorCount = users.filter(u => u.role === 'EDITOR').length;
 
-    const pendingCount = posts.filter(p => p.status === 'PENDING').length;
-    const approvedCount = posts.filter(p => p.status === 'APPROVED').length;
-    const rejectedCount = posts.filter(p => p.status === 'REJECTED').length;
+  // Status filter options for posts
+  const postStatusOptions = [
+    { value: '', label: 'All Posts', icon: FileText, color: 'gray' },
+    { value: 'PENDING', label: 'Pending Review', icon: Clock, color: 'yellow' },
+    { value: 'APPROVED', label: 'Approved', icon: CheckCircle, color: 'green' },
+    { value: 'REJECTED', label: 'Rejected', icon: XCircle, color: 'red' }
+  ];
 
-    return (
-      <>
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Pending Review</p>
-                <p className="text-2xl font-bold">{pendingCount}</p>
-              </div>
-              <AlertTriangle className="h-8 w-8 text-yellow-500" />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Approved</p>
-                <p className="text-2xl font-bold">{approvedCount}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Rejected</p>
-                <p className="text-2xl font-bold">{rejectedCount}</p>
-              </div>
-              <XCircle className="h-8 w-8 text-red-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <h2 className="text-xl font-bold">Post Approval Management</h2>
-          <p className="text-gray-600">
-            Review and approve/reject user submissions. Rejections require a reason.
-          </p>
-          <div className="mt-2 text-sm text-gray-500">
-            Role: <span className="font-semibold">{user.role}</span>
-          </div>
-        </div>
-
-        <PostFilters {...postFiltersProps} />
-
-        {posts.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No posts found with the current filters</p>
-            {postFilters.status === 'PENDING' && (
-              <Button
-                onClick={() => handlePostFilterChange('status', '')}
-                variant="outline"
-                className="mt-4"
-              >
-                View All Posts
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {posts.map(post => (
-              <PostCard
-                key={post.id}
-                post={post}
-                onApprove={() => openApproveModal(post)}
-                onReject={() => openRejectModal(post)}
-                onView={() => navigate(`/posts/${post.id}`)}
-                showApproveButton={post.status === 'PENDING' && (user.role === 'ADMIN' || user.role === 'EDITOR')}
-                showRejectButton={post.status === 'PENDING' && (user.role === 'ADMIN' || user.role === 'EDITOR')}
-                showViewButton={true}
-                showAuthorInfo={true}
-              />
-            ))}
-          </div>
-        )}
-
-        {postsPagination.totalPages > 1 && (
-          <div className="flex justify-between items-center mt-6">
-            <Button
-              onClick={() => handlePostPageChange(postFilters.page - 1)}
-              disabled={postFilters.page === 1}
-            >
-              Previous
-            </Button>
-            <span>Page {postFilters.page} of {postsPagination.totalPages}</span>
-            <Button
-              onClick={() => handlePostPageChange(postFilters.page + 1)}
-              disabled={postFilters.page === postsPagination.totalPages}
-            >
-              Next
-            </Button>
-          </div>
-        )}
-      </>
-    );
-  };
-
-  // Only show user management for admins
-  const renderUsersTab = () => {
-    if (user.role !== 'ADMIN') {
-      return (
-        <div className="text-center py-12">
-          <Alert 
-            type="error" 
-            message="Admin access required for user management"
-            className="mb-6"
-          />
-          <p className="text-gray-600 mb-4">
-            You need to be an administrator to manage users.
-          </p>
-        </div>
-      );
-    }
-
-    if (usersLoading && !users.length) {
-      return (
-        <div className="flex justify-center py-12">
-          <Loading />
-          <div className="ml-4">
-            <p className="text-gray-500">Loading users...</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (usersError && !users.length) {
-      return (
-        <div className="text-center py-12">
-          <Alert type="error" message={usersError.message || 'Failed to load users'} />
-          <Button onClick={fetchUsers} className="mt-4">
-            Retry Loading Users
-          </Button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">User Management</h2>
-            <p className="text-gray-600">Create and manage user accounts (Admin only)</p>
-          </div>
-          
-          <Button 
-            onClick={() => setShowCreateUser(!showCreateUser)}
-            variant={showCreateUser ? "outline" : "primary"}
-          >
-            {showCreateUser ? "Cancel" : "Create New User"}
-          </Button>
-        </div>
-
-        {/* Create User Form */}
-        {showCreateUser && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4">Create New User</h3>
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <Input
-                label="Email Address"
-                type="email"
-                value={newUser.email}
-                onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="user@example.com"
-                required
-                disabled={creatingUser}
-              />
-              <Input
-                label="Full Name"
-                value={newUser.name}
-                onChange={(e) => setNewUser(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="John Doe"
-                required
-                disabled={creatingUser}
-              />
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={creatingUser}
-                >
-                  <option value="USER">User (Can create posts)</option>
-                  <option value="ADMIN">Admin (Can approve/reject posts & manage users)</option>
-                  <option value="EDITOR">Editor (Can approve/reject posts)</option>
-                  <option value="PENDING">Pending (Requires activation)</option>
-                </select>
-              </div>
-              <div className="pt-2">
-                <Button 
-                  type="submit" 
-                  disabled={creatingUser}
-                  className="w-full md:w-auto"
-                >
-                  {creatingUser ? "Creating User..." : "Create User Account"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Users Search & Filter */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <Input
-                type="search"
-                placeholder="Search users by email or name..."
-                value={userFilters.search || ''}
-                onChange={(e) => handleUserFilterChange('search', e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={userFilters.role || ''}
-                onChange={(e) => handleUserFilterChange('role', e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Roles</option>
-                <option value="USER">Users Only</option>
-                <option value="ADMIN">Admins Only</option>
-                <option value="EDITOR">Editors Only</option>
-                <option value="PENDING">Pending Only</option>
-              </select>
-              {(userFilters.search || userFilters.role) && (
-                <Button
-                  variant="outline"
-                  onClick={() => setUserFilters(prev => ({ ...prev, search: '', role: '' }))}
-                >
-                  Clear Filters
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Users Table */}
-        {users.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-            <p className="text-gray-500">
-              {userFilters.search || userFilters.role 
-                ? "No users match your filters." 
-                : "No users found."}
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User Details
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Posts
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((userItem) => (
-                    <tr key={userItem.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{userItem.name}</div>
-                          <div className="text-sm text-gray-500">{userItem.email}</div>
-                          {userItem.id === user?.id && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mt-1">
-                              You
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          userItem.role === 'ADMIN' 
-                            ? 'bg-purple-100 text-purple-800' 
-                            : userItem.role === 'EDITOR'
-                            ? 'bg-blue-100 text-blue-800'
-                            : userItem.role === 'PENDING'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {userItem.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          userItem.passwordReset 
-                            ? 'bg-yellow-100 text-yellow-800' 
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {userItem.passwordReset ? 'Setup Required' : 'Active'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(userItem.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {userItem.postsCount || userItem._count?.posts || 0}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {userItem.id !== user?.id && userItem.role !== 'ADMIN' ? (
-                          <Button
-                            onClick={() => handleDeleteUser(userItem.id)}
-                            variant="danger"
-                            size="sm"
-                          >
-                            Delete
-                          </Button>
-                        ) : (
-                          <span className="text-gray-400 text-sm">
-                            {userItem.id === user?.id ? 'Current User' : 'Protected'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {usersPagination && usersPagination.totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 px-6 py-4 gap-4">
-                <div className="text-sm text-gray-700">
-                  <p>
-                    Showing <span className="font-medium">{(userFilters.page - 1) * userFilters.limit + 1}</span> to{" "}
-                    <span className="font-medium">
-                      {Math.min(userFilters.page * userFilters.limit, usersPagination.total)}
-                    </span>{" "}
-                    of <span className="font-medium">{usersPagination.total}</span> users
-                  </p>
-                </div>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleUserPageChange(userFilters.page - 1)}
-                    disabled={userFilters.page === 1}
-                    size="sm"
-                  >
-                    Previous
-                  </Button>
-                  <div className="flex items-center">
-                    <span className="px-3 text-sm text-gray-700">
-                      Page {userFilters.page} of {usersPagination.totalPages}
-                    </span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleUserPageChange(userFilters.page + 1)}
-                    disabled={userFilters.page === usersPagination.totalPages}
-                    size="sm"
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Role filter options for users
+  const userRoleOptions = [
+    { value: '', label: 'All Roles', icon: Users, color: 'gray' },
+    { value: 'USER', label: 'Users', icon: User, color: 'blue' },
+    { value: 'ADMIN', label: 'Admins', icon: User, color: 'purple' },
+    { value: 'EDITOR', label: 'Editors', icon: User, color: 'green' },
+    { value: 'PENDING', label: 'Pending', icon: Clock, color: 'yellow' }
+  ];
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-gray-600">Welcome, {user?.name}! ({user?.role})</p>
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="min-h-screen bg-gradient-to-b from-gray-50 to-white"
+    >
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 max-w-7xl">
+        <div className="space-y-6 md:space-y-8">
+          {/* Dashboard Header */}
+          <motion.div 
+            className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 rounded-3xl p-6 md:p-8 shadow-xl overflow-hidden"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="relative">
+              {/* Animated background elements */}
+              <motion.div
+                className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full"
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 4, repeat: Infinity }}
+              />
+              <motion.div
+                className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full"
+                animate={{ y: [0, -20, 0] }}
+                transition={{ duration: 3, repeat: Infinity }}
+              />
+              
+              <div className="relative">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-4 mb-6">
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                        className="relative"
+                      >
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                          {user?.name?.charAt(0)?.toUpperCase() || 'A'}
+                        </div>
+                        <motion.div
+                          className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-400 border-2 border-white flex items-center justify-center"
+                          animate={{ scale: [1, 1.1, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                        >
+                          <div className="w-2 h-2 rounded-full bg-white" />
+                        </motion.div>
+                      </motion.div>
+                      <div>
+                        <motion.h1 
+                          className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-2"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.1 }}
+                        >
+                          Admin Dashboard
+                        </motion.h1>
+                        <motion.p 
+                          className="text-blue-100 text-sm md:text-base"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.2 }}
+                        >
+                          Welcome back, {user?.name?.split(' ')[0] || 'Admin'}! ({user?.role})
+                        </motion.p>
+                      </div>
+                    </div>
+
+                    {/* Stats Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                      {[
+                        { 
+                          label: 'Pending Review', 
+                          value: pendingCount, 
+                          icon: Clock, 
+                          color: 'yellow',
+                          gradient: 'from-amber-500 to-orange-500'
+                        },
+                        { 
+                          label: 'Approved Posts', 
+                          value: approvedCount, 
+                          icon: CheckCircle, 
+                          color: 'green',
+                          gradient: 'from-emerald-500 to-green-500'
+                        },
+                        { 
+                          label: 'Total Users', 
+                          value: userCount, 
+                          icon: Users, 
+                          color: 'blue',
+                          gradient: 'from-blue-500 to-cyan-500'
+                        },
+                        { 
+                          label: 'Admin Users', 
+                          value: adminCount, 
+                          icon: User, 
+                          color: 'purple',
+                          gradient: 'from-purple-500 to-pink-600'
+                        }
+                      ].map((stat, index) => (
+                        <motion.div
+                          key={stat.label}
+                          custom={index}
+                          variants={statsVariants}
+                          initial="hidden"
+                          animate="visible"
+                          whileHover={{ y: -5, transition: { duration: 0.2 } }}
+                          className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-blue-100">{stat.label}</p>
+                              <p className="text-3xl font-bold text-white mt-2">{stat.value}</p>
+                            </div>
+                            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.gradient} flex items-center justify-center`}>
+                              <stat.icon className="w-6 h-6 text-white" />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <motion.div 
+                    className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    <Button
+                      onClick={handleRefresh}
+                      variant="white"
+                      className="w-full lg:w-64"
+                      icon={<RefreshCw className="w-4 h-4" />}
+                      animateHover
+                    >
+                      Refresh Data
+                    </Button>
+                    
+                    {user.role === 'ADMIN' && (
+                      <Button
+                        onClick={() => setShowCreateUser(!showCreateUser)}
+                        variant="outline-white"
+                        className="w-full lg:w-64"
+                        icon={<Plus className="w-5 h-5" />}
+                        animateHover
+                      >
+                        {showCreateUser ? 'Cancel' : 'Create User'}
+                      </Button>
+                    )}
+                  </motion.div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Tab Navigation */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+            <div className="border-b border-gray-200">
+              <nav className="flex">
+                <button
+                  onClick={() => setActiveTab('posts')}
+                  className={`flex-1 py-4 px-6 text-center font-medium flex items-center justify-center gap-2 transition-colors ${
+                    activeTab === 'posts'
+                      ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <FileText className="w-5 h-5" />
+                  Post Approvals
+                  {pendingCount > 0 && (
+                    <span className="ml-1 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+                
+                {user.role === 'ADMIN' && (
+                  <button
+                    onClick={() => setActiveTab('users')}
+                    className={`flex-1 py-4 px-6 text-center font-medium flex items-center justify-center gap-2 transition-colors ${
+                      activeTab === 'users'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Users className="w-5 h-5" />
+                    User Management
+                    {users.length > 0 && (
+                      <span className="ml-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                        {users.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+              </nav>
+            </div>
+
+            {/* Tab Content */}
+            <div className="p-6">
+              <AnimatePresence mode="wait">
+                {activeTab === 'posts' ? (
+                  <motion.div
+                    key="posts"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    {/* Post Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <SearchBar
+                        value={postFilters.search}
+                        onChange={(value) => handlePostFilterChange('search', value)}
+                        placeholder="Search posts..."
+                        className="md:col-span-2"
+                      />
+                      
+                      <FilterDropdown
+                        value={postFilters.status}
+                        onChange={(value) => handlePostFilterChange('status', value)}
+                        options={postStatusOptions}
+                        placeholder="Filter by status"
+                      />
+                    </div>
+
+                    {/* Posts List */}
+                    {postsLoading && !posts.length ? (
+                      <div className="flex justify-center py-12">
+                        <LoadingSpinner size="lg" />
+                      </div>
+                    ) : postsError && !posts.length ? (
+                      <ErrorState
+                        title="Error Loading Posts"
+                        message={postsError.message}
+                        onRetry={fetchPosts}
+                      />
+                    ) : posts.length === 0 ? (
+                      <EmptyState
+                        title="No posts found"
+                        description="No posts match your current filters."
+                        icon={<FileText className="w-12 h-12" />}
+                        action={
+                          postFilters.status || postFilters.search ? (
+                            <Button
+                              onClick={() => {
+                                setPostFilters({
+                                  page: 1,
+                                  limit: 10,
+                                  status: '',
+                                  search: ''
+                                });
+                              }}
+                              variant="outline"
+                            >
+                              Clear Filters
+                            </Button>
+                          ) : null
+                        }
+                      />
+                    ) : (
+                      <div className="space-y-4">
+                        {posts.map(post => (
+                          <PostCard
+                            key={post.id}
+                            post={post}
+                            onApprove={() => handleApprovePost(post.id)}
+                            onReject={(reason) => handleRejectPost(post.id, reason)}
+                            showApproveButton={post.status === 'PENDING'}
+                            showRejectButton={post.status === 'PENDING'}
+                            showAuthorInfo={true}
+                            showStatusBadge={true}
+                            className="shadow-md hover:shadow-lg transition-shadow"
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Pagination */}
+                    {postsPagination.totalPages > 1 && (
+                      <div className="pt-6 border-t border-gray-100">
+                        <Pagination
+                          currentPage={postFilters.page}
+                          totalPages={postsPagination.totalPages}
+                          totalItems={postsPagination.total}
+                          itemsPerPage={postFilters.limit}
+                          onPageChange={(page) => handlePostFilterChange('page', page)}
+                          showInfo={true}
+                        />
+                      </div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="users"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    {/* Create User Form */}
+                    {showCreateUser && (
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
+                        <h3 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
+                          <Plus className="w-5 h-5" />
+                          Create New User
+                        </h3>
+                        <form onSubmit={handleCreateUser} className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input
+                              label="Email Address"
+                              type="email"
+                              value={newUser.email}
+                              onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+                              placeholder="user@example.com"
+                              required
+                              disabled={creatingUser}
+                            />
+                            <Input
+                              label="Full Name"
+                              value={newUser.name}
+                              onChange={(e) => setNewUser(prev => ({ ...prev, name: e.target.value }))}
+                              placeholder="John Doe"
+                              required
+                              disabled={creatingUser}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Role
+                            </label>
+                            <select
+                              value={newUser.role}
+                              onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              disabled={creatingUser}
+                            >
+                              <option value="USER">User (Can create posts)</option>
+                              <option value="ADMIN">Admin (Full system access)</option>
+                              <option value="EDITOR">Editor (Can approve/reject posts)</option>
+                              <option value="PENDING">Pending (Requires activation)</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-3 pt-2">
+                            <Button 
+                              type="submit" 
+                              disabled={creatingUser}
+                              className="flex-1"
+                              animateHover
+                            >
+                              {creatingUser ? (
+                                <>
+                                  <LoadingSpinner size="sm" className="mr-2" />
+                                  Creating User...
+                                </>
+                              ) : (
+                                'Create User Account'
+                              )}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setShowCreateUser(false)}
+                              disabled={creatingUser}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
+
+                    {/* User Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <SearchBar
+                        value={userFilters.search}
+                        onChange={(value) => handleUserFilterChange('search', value)}
+                        placeholder="Search users..."
+                        className="md:col-span-2"
+                      />
+                      
+                      <FilterDropdown
+                        value={userFilters.role}
+                        onChange={(value) => handleUserFilterChange('role', value)}
+                        options={userRoleOptions}
+                        placeholder="Filter by role"
+                      />
+                    </div>
+
+                    {/* Users List */}
+                    {usersLoading && !users.length ? (
+                      <div className="flex justify-center py-12">
+                        <LoadingSpinner size="lg" />
+                      </div>
+                    ) : usersError && !users.length ? (
+                      <ErrorState
+                        title="Error Loading Users"
+                        message={usersError.message}
+                        onRetry={fetchUsers}
+                      />
+                    ) : users.length === 0 ? (
+                      <EmptyState
+                        title="No users found"
+                        description={userFilters.search || userFilters.role 
+                          ? "No users match your current filters." 
+                          : "No users in the system yet."}
+                        icon={<Users className="w-12 h-12" />}
+                        action={
+                          !showCreateUser ? (
+                            <Button
+                              onClick={() => setShowCreateUser(true)}
+                              icon={<Plus className="w-5 h-5" />}
+                              animateHover
+                            >
+                              Create First User
+                            </Button>
+                          ) : null
+                        }
+                      />
+                    ) : (
+                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  User Details
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Role
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Status
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Created
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Posts
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                  Actions
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {users.map((userItem) => (
+                                <tr key={userItem.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold">
+                                        {userItem.name?.charAt(0)?.toUpperCase() || 'U'}
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-medium text-gray-900">{userItem.name}</div>
+                                        <div className="text-sm text-gray-500">{userItem.email}</div>
+                                        {userItem.id === user?.id && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mt-1">
+                                            You
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <StatusBadge 
+                                      status={userItem.role?.toLowerCase()} 
+                                      size="sm"
+                                      showText={false}
+                                    />
+                                    <span className="ml-2 text-sm text-gray-900">{userItem.role}</span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <StatusBadge 
+                                      status={userItem.passwordReset ? 'pending' : 'approved'} 
+                                      size="sm"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {new Date(userItem.createdAt).toLocaleDateString()}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                                    {userItem.postsCount || userItem._count?.posts || 0}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    {userItem.id !== user?.id && userItem.role !== 'ADMIN' ? (
+                                      <Button
+                                        onClick={() => handleDeleteUser(userItem.id, userItem.name)}
+                                        variant="danger"
+                                        size="sm"
+                                        icon={<Trash2 className="w-4 h-4" />}
+                                        animateHover
+                                      >
+                                        Delete
+                                      </Button>
+                                    ) : (
+                                      <span className="text-gray-400 text-sm">
+                                        {userItem.id === user?.id ? 'Current User' : 'Protected'}
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Pagination */}
+                        {usersPagination.totalPages > 1 && (
+                          <div className="border-t border-gray-200 px-6 py-4">
+                            <Pagination
+                              currentPage={userFilters.page}
+                              totalPages={usersPagination.totalPages}
+                              totalItems={usersPagination.total}
+                              itemsPerPage={userFilters.limit}
+                              onPageChange={(page) => handleUserFilterChange('page', page)}
+                              showInfo={true}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
         </div>
-
-        {/* Tab Navigation */}
-        <div className="border-b">
-          <nav className="flex space-x-8">
-            <button
-              onClick={() => setActiveTab('posts')}
-              className={`py-4 px-1 border-b-2 font-medium flex items-center gap-2 ${
-                activeTab === 'posts'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <FileText className="h-5 w-5" />
-              Post Approvals
-              {postFilters.status === 'PENDING' && posts.length > 0 && (
-                <span className="ml-1 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                  {posts.filter(p => p.status === 'PENDING').length}
-                </span>
-              )}
-            </button>
-            {user.role === 'ADMIN' && (
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`py-4 px-1 border-b-2 font-medium flex items-center gap-2 ${
-                  activeTab === 'users'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Users className="h-5 w-5" />
-                User Management
-              </button>
-            )}
-          </nav>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'posts' ? renderPostsTab() : renderUsersTab()}
-
-        {/* Approval Modal */}
-        {postToApprove && (
-          <ApprovalModal
-            post={postToApprove}
-            action="approve"
-            onClose={() => setPostToApprove(null)}
-            onSubmit={onApproveSubmit}
-          />
-        )}
-
-        {/* Rejection Modal */}
-        {postToReject && (
-          <ApprovalModal
-            post={postToReject}
-            action="reject"
-            onClose={() => setPostToReject(null)}
-            onSubmit={onRejectSubmit}
-          />
-        )}
       </div>
-    </div>
+    </motion.div>
   );
 }

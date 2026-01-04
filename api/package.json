@@ -43,6 +43,8 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.2",
+    "lodash": "^4.17.21",
+    "lodash-es": "^4.17.22",
     "nodemailer": "^7.0.12",
     "prisma": "^5.7.0"
   },
