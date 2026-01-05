@@ -5,10 +5,7 @@ import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
 import Logo from '../../components/common/Logo';
-import SearchBar from '../../components/common/SearchBar';
-import FilterDropdown from '../../components/common/FilterDropdown';
 import StatusBadge from '../../components/common/StatusBadge';
-import Pagination from '../../components/common/Pagination';
 import { toast } from 'react-hot-toast';
 
 export default function Login() {
@@ -22,6 +19,53 @@ export default function Login() {
   const { login, authError, clearAuthError, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Carousel state
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const slides = [
+    {
+      title: "Create & Draft Posts",
+      description: "Start by creating content with our intuitive editor. Save as drafts and refine before submission.",
+      imageColor: "from-blue-500 to-blue-700",
+      steps: [
+        { title: "Start Writing", icon: "✍️", description: "Use our rich text editor" },
+        { title: "Add Media", icon: "🖼️", description: "Upload images and videos" },
+        { title: "Save as Draft", icon: "💾", description: "Work at your own pace" }
+      ],
+      status: "draft"
+    },
+    {
+      title: "Submit for Review",
+      description: "Once ready, submit your post for review. Track its progress through the approval workflow.",
+      imageColor: "from-yellow-500 to-orange-600",
+      steps: [
+        { title: "Submit Post", icon: "📤", description: "Send for approval" },
+        { title: "Await Review", icon: "⏳", description: "Managers review content" },
+        { title: "Receive Feedback", icon: "💬", description: "Get comments and suggestions" }
+      ],
+      status: "pending"
+    },
+    {
+      title: "Publish & Monitor",
+      description: "After approval, publish your content. Monitor performance and engagement metrics.",
+      imageColor: "from-green-500 to-emerald-700",
+      steps: [
+        { title: "Get Approval", icon: "✅", description: "Post gets approved" },
+        { title: "Schedule Publishing", icon: "📅", description: "Set publish date/time" },
+        { title: "Monitor Analytics", icon: "📊", description: "Track views and engagement" }
+      ],
+      status: "published"
+    }
+  ];
+
+  // Auto-rotate carousel
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [slides.length]);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -78,7 +122,6 @@ export default function Login() {
     try {
       const response = await login(formData.email, formData.password);
       
-      // ✅ CHECK FOR PASSWORD SETUP REQUIRED
       if (response?.passwordReset === true || response?.data?.passwordReset === true) {
         const userId = response?.userId || response?.data?.userId;
         const userEmail = response?.user?.email || formData.email;
@@ -175,99 +218,138 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* ✅ LEFT SIDE - Image/Illustration */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800 relative overflow-hidden">
-        {/* Decorative elements */}
-        <div className="absolute inset-0 bg-black opacity-20"></div>
-        <div className="absolute top-0 left-0 w-full h-full">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob"></div>
-          <div className="absolute top-40 right-20 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
-          <div className="absolute bottom-20 left-40 w-72 h-72 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
-        </div>
-        
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center items-center w-full px-12 text-white">
-          <div className="max-w-md">
-            <div className="mb-8">
+      {/* ✅ LEFT SIDE - Three-Step Carousel */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-900 to-gray-800 relative overflow-hidden">
+        <div className="relative z-10 flex flex-col justify-center items-center w-full px-8 text-white">
+          <div className="w-full max-w-xl">
+            {/* Logo */}
+            <div className="mb-12">
               <Logo className="h-16 w-auto filter brightness-0 invert" />
-            </div>
-            
-            <h1 className="text-4xl font-bold mb-6 leading-tight">
-              Welcome to Post Management System
-            </h1>
-            
-            <p className="text-lg text-blue-100 mb-8">
-              Streamline your content workflow with our powerful post approval system. 
-              Create, review, and manage posts with ease.
-            </p>
-            
-            {/* Features */}
-            <div className="space-y-4">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Easy Collaboration</h3>
-                  <p className="text-blue-100">Work together with your team seamlessly</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Powerful Admin Tools</h3>
-                  <p className="text-blue-100">Comprehensive user and post management</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">Secure & Reliable</h3>
-                  <p className="text-blue-100">Enterprise-grade security for your content</p>
-                </div>
-              </div>
+              <h1 className="text-3xl font-bold mt-4">Post Management System</h1>
             </div>
 
-            {/* Stats */}
-            <div className="mt-12 grid grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold">10K+</div>
-                <div className="text-sm text-blue-200">Posts Managed</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold">500+</div>
-                <div className="text-sm text-blue-200">Active Users</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold">99.9%</div>
-                <div className="text-sm text-blue-200">Uptime</div>
-              </div>
+            {/* Carousel Container */}
+            <div className="relative h-[500px] overflow-hidden rounded-2xl bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-white/10">
+              {/* Slides */}
+              {slides.map((slide, index) => (
+                <div
+                  key={index}
+                  className={`absolute inset-0 transition-all duration-700 ease-in-out transform ${
+                    index === currentSlide
+                      ? 'translate-x-0 opacity-100'
+                      : index < currentSlide
+                      ? '-translate-x-full opacity-0'
+                      : 'translate-x-full opacity-0'
+                  }`}
+                >
+                  {/* Background gradient */}
+                  <div className={`absolute inset-0 bg-gradient-to-br ${slide.imageColor} opacity-20`}></div>
+                  
+                  {/* Content */}
+                  <div className="relative z-10 p-8 h-full flex flex-col">
+                    {/* Status Badge */}
+                    <div className="mb-6">
+                      <StatusBadge status={slide.status} size="lg" />
+                    </div>
+
+                    {/* Title */}
+                    <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
+                    
+                    {/* Description */}
+                    <p className="text-gray-200 text-lg mb-8 leading-relaxed">
+                      {slide.description}
+                    </p>
+
+                    {/* Steps Container */}
+                    <div className="flex-1 flex flex-col justify-center">
+                      {/* Top Step */}
+                      <div className="flex justify-center mb-8">
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 w-64 transform -rotate-2 hover:rotate-0 transition-transform duration-300 border border-white/20">
+                          <div className="text-3xl mb-3">{slide.steps[0].icon}</div>
+                          <h3 className="text-xl font-semibold mb-2">{slide.steps[0].title}</h3>
+                          <p className="text-gray-300 text-sm">{slide.steps[0].description}</p>
+                        </div>
+                      </div>
+
+                      {/* Middle Step - Centered */}
+                      <div className="flex justify-center mb-8">
+                        <div className="bg-white/15 backdrop-blur-sm rounded-xl p-6 w-72 transform scale-110 hover:scale-105 transition-transform duration-300 border border-white/30 shadow-lg">
+                          <div className="text-4xl mb-4">{slide.steps[1].icon}</div>
+                          <h3 className="text-2xl font-bold mb-2">{slide.steps[1].title}</h3>
+                          <p className="text-gray-300">{slide.steps[1].description}</p>
+                        </div>
+                      </div>
+
+                      {/* Bottom Step */}
+                      <div className="flex justify-center">
+                        <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 w-64 transform rotate-2 hover:rotate-0 transition-transform duration-300 border border-white/20">
+                          <div className="text-3xl mb-3">{slide.steps[2].icon}</div>
+                          <h3 className="text-xl font-semibold mb-2">{slide.steps[2].title}</h3>
+                          <p className="text-gray-300 text-sm">{slide.steps[2].description}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Step Indicator */}
+                    <div className="mt-8 flex justify-center space-x-2">
+                      {slides.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCurrentSlide(idx)}
+                          className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                            idx === currentSlide
+                              ? 'bg-white w-8'
+                              : 'bg-white/40 hover:bg-white/60'
+                          }`}
+                          aria-label={`Go to step ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Navigation Arrows */}
+              <button
+                onClick={() => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)}
+                className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full p-3 transition-all duration-300 border border-white/20"
+                aria-label="Previous slide"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setCurrentSlide((prev) => (prev + 1) % slides.length)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full p-3 transition-all duration-300 border border-white/20"
+                aria-label="Next slide"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
 
-            {/* Status Badge Examples */}
-            <div className="mt-8 bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-              <h4 className="text-lg font-semibold mb-3">Post Status System</h4>
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge status="pending" size="sm" showIcon={false} />
-                <StatusBadge status="approved" size="sm" showIcon={false} />
-                <StatusBadge status="rejected" size="sm" showIcon={false} />
-                <StatusBadge status="draft" size="sm" showIcon={false} />
-                <StatusBadge status="published" size="sm" showIcon={false} />
+            {/* Carousel Progress */}
+            <div className="mt-8 flex items-center justify-center text-gray-300">
+              <span className="text-sm">
+                Step {currentSlide + 1} of {slides.length}
+              </span>
+              <div className="ml-4 w-32 bg-gray-700 rounded-full h-1">
+                <div 
+                  className="bg-white h-full rounded-full transition-all duration-500"
+                  style={{ width: `${((currentSlide + 1) / slides.length) * 100}%` }}
+                />
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Animated Background */}
+        <div className="absolute inset-0">
+          <div className="absolute top-0 left-0 w-72 h-72 bg-blue-500/10 rounded-full mix-blend-multiply filter blur-xl animate-blob"></div>
+          <div className="absolute top-0 right-0 w-72 h-72 bg-purple-500/10 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-2000"></div>
+          <div className="absolute bottom-0 left-1/2 w-72 h-72 bg-pink-500/10 rounded-full mix-blend-multiply filter blur-xl animate-blob animation-delay-4000"></div>
         </div>
       </div>
 
@@ -469,7 +551,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Add blob animation styles */}
+      {/* Animation styles */}
       <style jsx>{`
         @keyframes blob {
           0%, 100% { transform: translate(0, 0) scale(1); }
