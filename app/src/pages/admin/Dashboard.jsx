@@ -264,7 +264,12 @@ export default function AdminDashboard() {
   };
 
   const handleRejectPost = async (postId, rejectionReason) => {
-    if (!rejectionReason || rejectionReason.trim() === '') {
+    // FIXED: Ensure rejectionReason is a string before calling .trim()
+    const reason = typeof rejectionReason === 'string' 
+      ? rejectionReason 
+      : rejectionReason?.target?.value || '';
+    
+    if (!reason || reason.trim() === '') {
       toast.error('Please provide a rejection reason', { icon: '📝' });
       return;
     }
@@ -272,7 +277,7 @@ export default function AdminDashboard() {
     try {
       const result = await postService.reviewPost(postId, { 
         status: 'REJECTED',
-        rejectionReason: rejectionReason.trim()
+        rejectionReason: reason.trim()
       });
       
       if (result && result.success === true) {
@@ -283,7 +288,7 @@ export default function AdminDashboard() {
               ? { 
                   ...post, 
                   status: 'REJECTED', 
-                  rejectionReason: rejectionReason.trim(),
+                  rejectionReason: reason.trim(),
                   reviewedBy: result.post?.reviewedBy || { name: user?.name },
                   updatedAt: new Date().toISOString() 
                 }
@@ -301,39 +306,39 @@ export default function AdminDashboard() {
   };
 
   const handleCreateUser = async (e) => {
-  e.preventDefault();
-  
-  if (!newUser.email || !newUser.name) {
-    toast.error('Email and name are required', { icon: '📝' });
-    return;
-  }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(newUser.email)) {
-    toast.error('Invalid email address', { icon: '📧' });
-    return;
-  }
-
-  setCreatingUser(true);
-  
-  // Show immediate feedback - backend is working but slow
-  toast.loading('Creating user... (This may take 30+ seconds due to email sending)', {
-    id: 'create-user',
-    duration: 10000 // Show for 10 seconds
-  });
-  
-  try {
-    const result = await userService.createUser(
-      newUser.email, 
-      newUser.name, 
-      newUser.role
-    );
+    e.preventDefault();
     
-    // Dismiss the loading toast
-    toast.dismiss('create-user');
+    if (!newUser.email || !newUser.name) {
+      toast.error('Email and name are required', { icon: '📝' });
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUser.email)) {
+      toast.error('Invalid email address', { icon: '📧' });
+      return;
+    }
+
+    setCreatingUser(true);
     
-    if (result && result.success === true) {
-      const instructions = `
+    // Show immediate feedback - backend is working but slow
+    toast.loading('Creating user... (This may take 30+ seconds due to email sending)', {
+      id: 'create-user',
+      duration: 10000 // Show for 10 seconds
+    });
+    
+    try {
+      const result = await userService.createUser(
+        newUser.email, 
+        newUser.name, 
+        newUser.role
+      );
+      
+      // Dismiss the loading toast
+      toast.dismiss('create-user');
+      
+      if (result && result.success === true) {
+        const instructions = `
 📧 User Created: ${newUser.name}
 
 Login Instructions (share with user):
@@ -341,45 +346,45 @@ Login Instructions (share with user):
 2. Email: ${newUser.email}
 3. Password: Any temporary password (e.g., "temp123")
 4. They'll be prompted to create their permanent password
-      `.trim();
-      
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(instructions);
-        toast.success('User created! Instructions copied to clipboard.', { 
-          icon: '📋',
-          duration: 5000 
-        });
+        `.trim();
+        
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(instructions);
+          toast.success('User created! Instructions copied to clipboard.', { 
+            icon: '📋',
+            duration: 5000 
+          });
+        } else {
+          toast.success('User created successfully!', { 
+            icon: '✅',
+            duration: 5000 
+          });
+        }
+        
+        setShowCreateUser(false);
+        setNewUser({ email: '', name: '', role: 'USER' });
+        
+        // Wait a bit before refreshing users list (backend needs time)
+        setTimeout(() => {
+          fetchUsers();
+        }, 5000);
+        
       } else {
-        toast.success('User created successfully!', { 
-          icon: '✅',
+        toast.error(result?.error?.message || result?.message || 'Failed to create user', { 
+          icon: '⚠️',
           duration: 5000 
         });
       }
+    } catch (error) {
+      console.error('Create user error:', error);
       
-      setShowCreateUser(false);
-      setNewUser({ email: '', name: '', role: 'USER' });
+      // Dismiss the loading toast
+      toast.dismiss('create-user');
       
-      // Wait a bit before refreshing users list (backend needs time)
-      setTimeout(() => {
-        fetchUsers();
-      }, 5000);
-      
-    } else {
-      toast.error(result?.error?.message || result?.message || 'Failed to create user', { 
-        icon: '⚠️',
-        duration: 5000 
-      });
-    }
-  } catch (error) {
-    console.error('Create user error:', error);
-    
-    // Dismiss the loading toast
-    toast.dismiss('create-user');
-    
-    // Check if it's just a timeout (backend might still be processing)
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      // Show optimistic success - backend is probably still working
-      const instructions = `
+      // Check if it's just a timeout (backend might still be processing)
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        // Show optimistic success - backend is probably still working
+        const instructions = `
 📧 User Creation Initiated: ${newUser.name}
 
 Login Instructions (share with user):
@@ -389,45 +394,45 @@ Login Instructions (share with user):
 4. They'll be prompted to create their permanent password
 
 Note: Email sending may be delayed. User account is being created.
-      `.trim();
-      
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(instructions);
-        toast.success('User creation initiated! Email may be delayed. Instructions copied.', { 
-          icon: '⏳',
-          duration: 5000 
-        });
+        `.trim();
+        
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(instructions);
+          toast.success('User creation initiated! Email may be delayed. Instructions copied.', { 
+            icon: '⏳',
+            duration: 5000 
+          });
+        } else {
+          toast.success('User creation initiated! Email sending may take a minute.', { 
+            icon: '⏳',
+            duration: 5000 
+          });
+        }
+        
+        setShowCreateUser(false);
+        setNewUser({ email: '', name: '', role: 'USER' });
+        
+        // Wait longer before refreshing since backend is still processing
+        setTimeout(() => {
+          fetchUsers();
+        }, 15000);
+        
       } else {
-        toast.success('User creation initiated! Email sending may take a minute.', { 
-          icon: '⏳',
+        // Real error
+        const errorMessage = 
+          error.response?.data?.error?.message || 
+          error.response?.data?.message || 
+          error.message || 
+          'Failed to create user';
+        toast.error(errorMessage, { 
+          icon: '❌',
           duration: 5000 
         });
       }
-      
-      setShowCreateUser(false);
-      setNewUser({ email: '', name: '', role: 'USER' });
-      
-      // Wait longer before refreshing since backend is still processing
-      setTimeout(() => {
-        fetchUsers();
-      }, 15000);
-      
-    } else {
-      // Real error
-      const errorMessage = 
-        error.response?.data?.error?.message || 
-        error.response?.data?.message || 
-        error.message || 
-        'Failed to create user';
-      toast.error(errorMessage, { 
-        icon: '❌',
-        duration: 5000 
-      });
+    } finally {
+      setCreatingUser(false);
     }
-  } finally {
-    setCreatingUser(false);
-  }
-};
+  };
 
   const handleDeleteUser = async (userId, userName) => {
     const confirmed = await new Promise(resolve => {

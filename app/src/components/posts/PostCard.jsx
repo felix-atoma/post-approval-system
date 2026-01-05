@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { format } from 'date-fns';
 import Button from '../common/Button';
 import { CheckCircle, XCircle, Clock, Eye, Edit, Trash2, AlertCircle } from 'lucide-react';
@@ -21,6 +21,10 @@ export default function PostCard({
   showActions = true,
   className = ''
 }) {
+  const [showRejectInput, setShowRejectInput] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const getStatusBadge = () => {
     const statusConfig = {
       PENDING: {
@@ -49,6 +53,45 @@ export default function PostCard({
         {config.text}
       </span>
     );
+  };
+
+  const handleRejectClick = () => {
+    if (!showRejectInput) {
+      // First click: show the rejection input
+      setShowRejectInput(true);
+    } else if (rejectionReason.trim()) {
+      // Second click with reason: submit the rejection
+      handleRejectSubmit();
+    }
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectionReason.trim()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onReject(rejectionReason); // Pass the reason string to parent
+      setShowRejectInput(false);
+      setRejectionReason('');
+    } catch (error) {
+      console.error('Error rejecting post:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelReject = () => {
+    setShowRejectInput(false);
+    setRejectionReason('');
+  };
+
+  const handleRejectDirect = () => {
+    // For compatibility with existing code that might pass event object
+    if (onReject) {
+      onReject(rejectionReason || '');
+    }
   };
 
   return (
@@ -82,8 +125,60 @@ export default function PostCard({
           {post.content}
         </p>
 
-        {/* Rejection Reason */}
-        {showRejectionReason && post.status === 'REJECTED' && post.rejectionReason && (
+        {/* Rejection Input (shown when Reject button is clicked) */}
+        {showRejectInput && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-red-900 mb-2">
+                  Rejection Reason *
+                </p>
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please provide a reason for rejecting this post..."
+                  className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                  rows="3"
+                  autoFocus
+                  disabled={isSubmitting}
+                />
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    onClick={handleRejectSubmit}
+                    variant="danger"
+                    size="sm"
+                    disabled={!rejectionReason.trim() || isSubmitting}
+                    className="flex items-center"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-4 h-4 mr-1.5" />
+                        Submit Rejection
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleCancelReject}
+                    variant="outline"
+                    size="sm"
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Previous Rejection Reason (display only) */}
+        {showRejectionReason && post.status === 'REJECTED' && post.rejectionReason && !showRejectInput && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
@@ -122,9 +217,9 @@ export default function PostCard({
           </div>
 
           {/* Action Buttons */}
-          {showActions && (
+          {showActions && !showRejectInput && (
             <div className="flex flex-wrap gap-2">
-              {/* ✅ EDIT BUTTON - For pending posts */}
+              {/* Edit Button */}
               {showEditButton && onEdit && (
                 <Button
                   onClick={onEdit}
@@ -166,7 +261,7 @@ export default function PostCard({
               {/* Reject Button */}
               {showRejectButton && onReject && (
                 <Button
-                  onClick={onReject}
+                  onClick={handleRejectClick}
                   variant="danger"
                   size="sm"
                   className="flex items-center"
@@ -188,6 +283,20 @@ export default function PostCard({
                   Delete
                 </Button>
               )}
+            </div>
+          )}
+
+          {/* Cancel button when in rejection input mode */}
+          {showActions && showRejectInput && (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCancelReject}
+                variant="outline"
+                size="sm"
+                disabled={isSubmitting}
+              >
+                Cancel Rejection
+              </Button>
             </div>
           )}
         </div>
