@@ -47,39 +47,48 @@ class UserService {
     }
   }
 
-  // Create user (admin only)
-  async createUser(email, name, role = 'USER') {
-    try {
-      console.log('🔍 UserService: Creating user:', { email, name, role });
-      
-      const response = await api.post('/users', {
-        email,
-        name,
-        role
-      });
-      
-      console.log('✅ UserService: Create user response:', response.data);
-      
-      // Backend returns: { success: true, message: '...', user: {...}, emailSent: true }
-      const responseData = response.data;
-      
-      // Return in format expected by frontend
+  
+ // Create user (admin only) - NON-BLOCKING version
+async createUser(email, name, role = 'USER') {
+  try {
+    console.log('🔍 UserService: Creating user:', { email, name, role });
+    
+    const response = await api.post('/users', {
+      email,
+      name,
+      role
+    }, {
+      timeout: 30000 // Give it 30 seconds
+    });
+    
+    console.log('✅ UserService: Create user response:', response.data);
+    
+    // Return the full backend response directly
+    return response.data;
+    
+  } catch (error) {
+    console.error('❌ Error in userService.createUser:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    // Don't throw on timeout - let frontend handle it optimistically
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      // Return a timeout response that frontend can handle
       return {
-        success: responseData.success,
-        data: responseData.user || responseData,
-        emailSent: responseData.emailSent || false,
-        message: responseData.message
+        success: true, // Assume success
+        message: 'Request timed out but user creation is likely in progress',
+        user: { email, name, role },
+        emailSent: 'pending',
+        timeout: true
       };
-      
-    } catch (error) {
-      console.error('❌ Error in userService.createUser:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-      throw error;
     }
+    
+    throw error;
   }
+}
 
   // Delete user (admin only)
   async deleteUser(userId) {

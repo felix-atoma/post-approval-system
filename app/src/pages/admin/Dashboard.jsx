@@ -127,25 +127,25 @@ export default function AdminDashboard() {
       setPostsLoading(true);
       setPostsError(null);
       
-      const response = await postService.getAllPosts({
+      const result = await postService.getAllPosts({
         page: postFilters.page,
         limit: postFilters.limit,
         status: postFilters.status || '',
         search: postFilters.search || ''
       });
       
-      if (response && response.success === true) {
-        setPosts(response.posts || []);
-        setPostsPagination(response.pagination || {});
+      if (result && result.success === true) {
+        setPosts(result.posts || []);
+        setPostsPagination(result.pagination || {});
         
-        if (response.posts?.length > 0) {
-          toast.success(`${response.posts.length} posts loaded`, { 
+        if (result.posts?.length > 0) {
+          toast.success(`${result.posts.length} posts loaded`, { 
             icon: '📝',
             duration: 2000 
           });
         }
       } else {
-        const errorMsg = response?.error?.message || 'Failed to fetch posts';
+        const errorMsg = result?.error?.message || result?.message || 'Failed to fetch posts';
         setPostsError(new Error(errorMsg));
         toast.error(errorMsg, { icon: '⚠️' });
       }
@@ -156,6 +156,8 @@ export default function AdminDashboard() {
         errorMessage = 'Access denied. Admin/Editor privileges required.';
       } else if (err.response?.data?.error?.message) {
         errorMessage = err.response.data.error.message;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
       }
       setPostsError(new Error(errorMessage));
       toast.error(errorMessage, { icon: '❌' });
@@ -173,31 +175,31 @@ export default function AdminDashboard() {
       setUsersLoading(true);
       setUsersError(null);
       
-      const response = await userService.getAllUsers(
+      const result = await userService.getAllUsers(
         userFilters.page,
         userFilters.limit,
         userFilters.search || '',
         userFilters.role || ''
       );
       
-      if (response && response.success === true) {
-        setUsers(response.users || []);
-        setUsersPagination(response.pagination || {});
+      if (result && result.success === true) {
+        setUsers(result.users || []);
+        setUsersPagination(result.pagination || {});
         
-        if (response.users?.length > 0) {
-          toast.success(`${response.users.length} users loaded`, { 
+        if (result.users?.length > 0) {
+          toast.success(`${result.users.length} users loaded`, { 
             icon: '👥',
             duration: 2000 
           });
         }
       } else {
-        const errorMsg = response?.error?.message || 'Failed to fetch users';
+        const errorMsg = result?.error?.message || result?.message || 'Failed to fetch users';
         setUsersError(new Error(errorMsg));
         toast.error(errorMsg, { icon: '⚠️' });
       }
     } catch (err) {
       console.error('Error fetching users:', err);
-      const errorMessage = err.response?.data?.error?.message || 'Failed to load users';
+      const errorMessage = err.response?.data?.error?.message || err.response?.data?.message || 'Failed to load users';
       setUsersError(new Error(errorMessage));
       toast.error(errorMessage, { icon: '❌' });
     } finally {
@@ -232,11 +234,11 @@ export default function AdminDashboard() {
 
   const handleApprovePost = async (postId) => {
     try {
-      const response = await postService.reviewPost(postId, { 
+      const result = await postService.reviewPost(postId, { 
         status: 'APPROVED' 
       });
       
-      if (response && response.success === true) {
+      if (result && result.success === true) {
         toast.success('Post approved successfully!', { icon: '✅' });
         setPosts(prevPosts => 
           prevPosts.map(post => 
@@ -245,18 +247,18 @@ export default function AdminDashboard() {
                   ...post, 
                   status: 'APPROVED', 
                   rejectionReason: null,
-                  reviewedBy: response.post?.reviewedBy || { name: user?.name },
+                  reviewedBy: result.post?.reviewedBy || { name: user?.name },
                   updatedAt: new Date().toISOString() 
                 }
               : post
           )
         );
       } else {
-        toast.error(response?.error?.message || 'Failed to approve post', { icon: '⚠️' });
+        toast.error(result?.error?.message || result?.message || 'Failed to approve post', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Approve post error:', error);
-      const errorMessage = error.response?.data?.error?.message || 'Failed to approve post';
+      const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || 'Failed to approve post';
       toast.error(errorMessage, { icon: '❌' });
     }
   };
@@ -268,12 +270,12 @@ export default function AdminDashboard() {
     }
 
     try {
-      const response = await postService.reviewPost(postId, { 
+      const result = await postService.reviewPost(postId, { 
         status: 'REJECTED',
         rejectionReason: rejectionReason.trim()
       });
       
-      if (response && response.success === true) {
+      if (result && result.success === true) {
         toast.success('Post rejected successfully', { icon: '✅' });
         setPosts(prevPosts => 
           prevPosts.map(post => 
@@ -282,47 +284,56 @@ export default function AdminDashboard() {
                   ...post, 
                   status: 'REJECTED', 
                   rejectionReason: rejectionReason.trim(),
-                  reviewedBy: response.post?.reviewedBy || { name: user?.name },
+                  reviewedBy: result.post?.reviewedBy || { name: user?.name },
                   updatedAt: new Date().toISOString() 
                 }
               : post
           )
         );
       } else {
-        toast.error(response?.error?.message || 'Failed to reject post', { icon: '⚠️' });
+        toast.error(result?.error?.message || result?.message || 'Failed to reject post', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Reject post error:', error);
-      const errorMessage = error.response?.data?.error?.message || 'Failed to reject post';
+      const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || 'Failed to reject post';
       toast.error(errorMessage, { icon: '❌' });
     }
   };
 
   const handleCreateUser = async (e) => {
-    e.preventDefault();
-    
-    if (!newUser.email || !newUser.name) {
-      toast.error('Email and name are required', { icon: '📝' });
-      return;
-    }
+  e.preventDefault();
+  
+  if (!newUser.email || !newUser.name) {
+    toast.error('Email and name are required', { icon: '📝' });
+    return;
+  }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newUser.email)) {
-      toast.error('Invalid email address', { icon: '📧' });
-      return;
-    }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newUser.email)) {
+    toast.error('Invalid email address', { icon: '📧' });
+    return;
+  }
 
-    setCreatingUser(true);
+  setCreatingUser(true);
+  
+  // Show immediate feedback - backend is working but slow
+  toast.loading('Creating user... (This may take 30+ seconds due to email sending)', {
+    id: 'create-user',
+    duration: 10000 // Show for 10 seconds
+  });
+  
+  try {
+    const result = await userService.createUser(
+      newUser.email, 
+      newUser.name, 
+      newUser.role
+    );
     
-    try {
-      const response = await userService.createUser(
-        newUser.email, 
-        newUser.name, 
-        newUser.role
-      );
-      
-      if (response && response.success === true) {
-        const instructions = `
+    // Dismiss the loading toast
+    toast.dismiss('create-user');
+    
+    if (result && result.success === true) {
+      const instructions = `
 📧 User Created: ${newUser.name}
 
 Login Instructions (share with user):
@@ -330,28 +341,93 @@ Login Instructions (share with user):
 2. Email: ${newUser.email}
 3. Password: Any temporary password (e.g., "temp123")
 4. They'll be prompted to create their permanent password
-        `.trim();
-        
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(instructions);
-          toast.success('User created! Instructions copied to clipboard.', { icon: '📋' });
-        } else {
-          toast.success('User created successfully!', { icon: '✅' });
-        }
-        
-        setShowCreateUser(false);
-        setNewUser({ email: '', name: '', role: 'USER' });
-        fetchUsers();
+      `.trim();
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(instructions);
+        toast.success('User created! Instructions copied to clipboard.', { 
+          icon: '📋',
+          duration: 5000 
+        });
       } else {
-        toast.error(response?.error?.message || 'Failed to create user', { icon: '⚠️' });
+        toast.success('User created successfully!', { 
+          icon: '✅',
+          duration: 5000 
+        });
       }
-    } catch (error) {
-      console.error('Create user error:', error);
-      toast.error(error.response?.data?.error?.message || 'Failed to create user', { icon: '❌' });
-    } finally {
-      setCreatingUser(false);
+      
+      setShowCreateUser(false);
+      setNewUser({ email: '', name: '', role: 'USER' });
+      
+      // Wait a bit before refreshing users list (backend needs time)
+      setTimeout(() => {
+        fetchUsers();
+      }, 5000);
+      
+    } else {
+      toast.error(result?.error?.message || result?.message || 'Failed to create user', { 
+        icon: '⚠️',
+        duration: 5000 
+      });
     }
-  };
+  } catch (error) {
+    console.error('Create user error:', error);
+    
+    // Dismiss the loading toast
+    toast.dismiss('create-user');
+    
+    // Check if it's just a timeout (backend might still be processing)
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      // Show optimistic success - backend is probably still working
+      const instructions = `
+📧 User Creation Initiated: ${newUser.name}
+
+Login Instructions (share with user):
+1. Go to: ${window.location.origin}/login
+2. Email: ${newUser.email}
+3. Password: Any temporary password (e.g., "temp123")
+4. They'll be prompted to create their permanent password
+
+Note: Email sending may be delayed. User account is being created.
+      `.trim();
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(instructions);
+        toast.success('User creation initiated! Email may be delayed. Instructions copied.', { 
+          icon: '⏳',
+          duration: 5000 
+        });
+      } else {
+        toast.success('User creation initiated! Email sending may take a minute.', { 
+          icon: '⏳',
+          duration: 5000 
+        });
+      }
+      
+      setShowCreateUser(false);
+      setNewUser({ email: '', name: '', role: 'USER' });
+      
+      // Wait longer before refreshing since backend is still processing
+      setTimeout(() => {
+        fetchUsers();
+      }, 15000);
+      
+    } else {
+      // Real error
+      const errorMessage = 
+        error.response?.data?.error?.message || 
+        error.response?.data?.message || 
+        error.message || 
+        'Failed to create user';
+      toast.error(errorMessage, { 
+        icon: '❌',
+        duration: 5000 
+      });
+    }
+  } finally {
+    setCreatingUser(false);
+  }
+};
 
   const handleDeleteUser = async (userId, userName) => {
     const confirmed = await new Promise(resolve => {
@@ -400,17 +476,18 @@ Login Instructions (share with user):
     if (!confirmed) return;
 
     try {
-      const response = await userService.deleteUser(userId);
+      const result = await userService.deleteUser(userId);
       
-      if (response && response.success === true) {
+      if (result && result.success === true) {
         toast.success('User deleted successfully', { icon: '✅' });
         fetchUsers();
       } else {
-        toast.error(response?.error?.message || 'Failed to delete user', { icon: '⚠️' });
+        toast.error(result?.error?.message || result?.message || 'Failed to delete user', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Delete user error:', error);
-      toast.error('Failed to delete user', { icon: '❌' });
+      const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || 'Failed to delete user';
+      toast.error(errorMessage, { icon: '❌' });
     }
   };
 

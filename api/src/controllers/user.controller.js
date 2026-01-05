@@ -45,7 +45,6 @@ class UserController {
           name: name.trim(),
           role: role.toUpperCase(),
           passwordReset: true, // Flag that user needs to set password
-          // No password field - user will set it on first login
         },
         select: {
           id: true,
@@ -58,32 +57,35 @@ class UserController {
         }
       });
 
-      console.log(`User created successfully: ${newUser.email}`);
+      console.log(`✅ User created successfully: ${newUser.email}`);
       
-      // 🔥 Send welcome email (simulated)
-      try {
-        await sendWelcomeEmail(newUser.email, newUser.name);
-        console.log('Welcome email sent (simulated)');
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError);
-        // Don't fail the user creation if email fails
-      }
-
-      return res.status(HTTP_STATUS.CREATED).json({
+      // ✅ FIXED: Send response immediately, then send email asynchronously
+      const response = {
         success: true,
-        message: 'User created successfully. Welcome email sent with login instructions.',
+        message: 'User created successfully.',
         user: newUser,
-        emailSent: true,
-        // Include instructions for admin to share
         instructions: `Share these login instructions with ${newUser.name}:
-        1. Go to: ${process.env.CLIENT_URL || 'http://localhost:3000'}/login
-        2. Email: ${newUser.email}
-        3. Enter any password (will be prompted to set real password)
-        4. Follow the prompts to set password`
-      });
+1. Go to: ${process.env.CLIENT_URL || 'http://localhost:3000'}/login
+2. Email: ${newUser.email}
+3. Enter any password (will be prompted to set real password)
+4. Follow the prompts to set password`
+      };
+
+      // Send email asynchronously (fire-and-forget)
+      // Don't wait for email to complete before responding
+      sendWelcomeEmail(newUser.email, newUser.name)
+        .then(() => {
+          console.log(`✅ Welcome email sent to ${newUser.email}`);
+        })
+        .catch(err => {
+          console.error(`⚠️ Email sending failed for ${newUser.email} (non-critical):`, err.message);
+        });
+
+      // Return success immediately (don't wait for email)
+      return res.status(HTTP_STATUS.CREATED).json(response);
 
     } catch (error) {
-      console.error('Create user error:', error);
+      console.error('❌ Create user error:', error);
       
       if (error.code === 'P2002') { // Prisma unique constraint error
         return res.status(HTTP_STATUS.CONFLICT).json({
