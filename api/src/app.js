@@ -28,15 +28,46 @@ app.use(
 );
 
 /* =======================
-   CORS CONFIGURATION
+   CORS CONFIGURATION - UPDATED
 ======================= */
+// Define allowed origins
+const allowedOrigins = [
+  'http://localhost:3000', // Local development
+  'https://post-approval-system.vercel.app', // Your Vercel app (without trailing slash)
+  'https://post-approval-system.vercel.app/' // With trailing slash
+];
+
+// Dynamic CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is in the allowed list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    
+    // Check if origin starts with your Vercel URL (for subpaths)
+    if (origin.startsWith('https://post-approval-system-')) {
+      return callback(null, true);
+    }
+    
+    // If origin doesn't match any allowed pattern
+    const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+    return callback(new Error(msg), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-ID'],
+  maxAge: 86400 // 24 hours
 };
+
 app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 /* =======================
    RATE LIMITING
@@ -89,7 +120,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
    REQUEST LOGGING
 ======================= */
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - Origin: ${req.headers.origin || 'No Origin'}`);
   next();
 });
 
@@ -100,7 +131,8 @@ app.get('/', (req, res) => {
   res.status(200).json({
     status: 'OK',
     message: 'Post Management API is running',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    allowedOrigins: allowedOrigins
   });
 });
 
@@ -111,9 +143,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/posts', postRoutes);
 
-/* =======================
-   EXTENDED HEALTH CHECK
-======================= */
 /* =======================
    EXTENDED HEALTH CHECK
 ======================= */
@@ -129,7 +158,8 @@ app.get('/health', async (req, res) => {
       service: 'Post Management API',
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development',
-      database: 'connected'
+      database: 'connected',
+      allowedOrigins: allowedOrigins
     });
   } catch (error) {
     res.status(503).json({
