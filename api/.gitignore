@@ -26,7 +26,8 @@ coverage/
 .nyc_output
 
 # Prisma
-prisma/migrations/
+# REMOVE OR COMMENT THIS LINE: prisma/migrations/
+# prisma/migrations/
 !prisma/migrations/.gitkeep
 *.db
 
